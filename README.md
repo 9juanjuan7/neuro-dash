@@ -1,3 +1,5 @@
+<img width="2240" height="1260" alt="NeuroHue-2" src="https://github.com/user-attachments/assets/a310344a-5915-4306-8943-936a1f1ed88a" />
+
 # EEG Car Race Game
 
 A simple browser-based car race controlled entirely by EEG focus (beta waves) using OpenBCI and BrainFlow.
