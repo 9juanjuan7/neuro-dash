@@ -53,7 +53,8 @@ class EEGStreamer:
     def _init_brainflow(self):
         """Initialize BrainFlow for hardware connection."""
         self.params = BrainFlowInputParams()
-        self.board_id = BoardIds.SYNTHETIC_BOARD.value  # Default to synthetic for testing
+        # Don't set a default board_id - it must be provided when connecting
+        self.board_id = None
     
     def connect(self, serial_port: Optional[str] = None, mac_address: Optional[str] = None, board_id: Optional[int] = None) -> bool:
         """
@@ -62,35 +63,95 @@ class EEGStreamer:
         Args:
             serial_port: Serial port for OpenBCI device (e.g., 'COM3' on Windows, '/dev/ttyUSB0' on Linux)
             mac_address: MAC address for Ganglion BLE connection (e.g., 'XX:XX:XX:XX:XX:XX')
-            board_id: BrainFlow board ID (optional, uses default if not provided)
+            board_id: BrainFlow board ID (required for hardware connection)
             
         Returns:
             True if connection successful
         """
         if self.use_demo or not BRAINFLOW_AVAILABLE:
+            print("Cannot connect: use_demo=True or BrainFlow not available")
             return False
         
+        # Validate board_id is provided
+        if board_id is None:
+            print("Error: board_id must be provided for hardware connection")
+            return False
+        
+        # Validate that either serial_port or mac_address is provided
+        if not serial_port and not mac_address:
+            print("Error: Either serial_port or mac_address must be provided")
+            return False
+        
+        # Validate that we don't have both (ambiguous)
+        if serial_port and mac_address:
+            print("Warning: Both serial_port and mac_address provided. Using serial_port.")
+            mac_address = None
+        
+        # Clean up any existing board connection first
+        if self.board is not None:
+            try:
+                self.stop_streaming()
+                self.board.release_session()
+            except:
+                pass
+            self.board = None
+        
         try:
-            # Set board ID if provided
-            if board_id is not None:
-                self.board_id = board_id
+            # Set board ID
+            self.board_id = board_id
+            
+            # Initialize fresh params for each connection attempt
+            self.params = BrainFlowInputParams()
             
             # Set connection parameters
             if serial_port:
                 self.params.serial_port = serial_port
+                print(f"Connecting via serial port: {serial_port}")
             if mac_address:
                 self.params.mac_address = mac_address
+                print(f"Connecting via MAC address: {mac_address}")
             
+            # Get board name for logging
+            board_names = {
+                BoardIds.CYTON_BOARD.value: "Cyton",
+                BoardIds.CYTON_DAISY_BOARD.value: "Cyton + Daisy",
+                BoardIds.GANGLION_BOARD.value: "Ganglion",
+            }
+            board_name = board_names.get(self.board_id, f"Board {self.board_id}")
+            print(f"Attempting to connect to {board_name} (board_id={self.board_id})")
+            
+            # Create board instance
             self.board = BoardShim(self.board_id, self.params)
+            
+            # Prepare session (this is where the actual connection happens)
+            print("Preparing session...")
             self.board.prepare_session()
+            
+            # Get board info
             self.sampling_rate = BoardShim.get_sampling_rate(self.board_id)
             eeg_channels = BoardShim.get_eeg_channels(self.board_id)
             self.n_channels = len(eeg_channels)
-            print(f"Connected to board. Sampling rate: {self.sampling_rate} Hz, Channels: {self.n_channels}")
+            
+            print(f"✅ Successfully connected to {board_name}!")
+            print(f"   Sampling rate: {self.sampling_rate} Hz")
+            print(f"   EEG channels: {self.n_channels}")
+            
             return True
         except Exception as e:
-            print(f"Connection failed: {e}")
-            print(f"Tried: board_id={self.board_id}, serial_port={serial_port}, mac_address={mac_address}")
+            print(f"❌ Connection failed: {e}")
+            print(f"   Attempted: board_id={self.board_id}, serial_port={serial_port}, mac_address={mac_address}")
+            
+            # Clean up on failure
+            if self.board is not None:
+                try:
+                    self.board.release_session()
+                except:
+                    pass
+                self.board = None
+            
+            import traceback
+            print("Full traceback:")
+            traceback.print_exc()
             return False
     
     def start_streaming(self) -> bool:
@@ -295,6 +356,7 @@ class BetaWaveProcessor:
     def get_focus_score(self, beta_power: float, threshold: float) -> float:
         """
         Compute focus score (0.0 to 1.0) based on beta power.
+        Made MUCH harder: requires significantly higher beta power to reach high scores.
         
         Args:
             beta_power: Beta wave power
@@ -306,8 +368,26 @@ class BetaWaveProcessor:
         if threshold <= 0:
             return 0.0
         
-        # Normalize power relative to threshold
-        score = min(beta_power / threshold, 2.0) / 2.0
+        # MUCH harder normalization: requires 3.5x threshold to reach max score
+        # This makes it very hard to achieve high focus scores
+        max_power = threshold * 3.5
+        
+        # Raw score (0 to 1)
+        raw_score = min(beta_power / max_power, 1.0)
+        
+        # Apply STRONG non-linear scaling - makes high scores much harder
+        # Using power of 0.5 (square root) makes it much harder to get high scores
+        # A raw score of 0.5 becomes 0.707, but 0.8 becomes 0.894 (harder to reach)
+        score = raw_score ** 0.5  # Square root curve - much harder for high scores
+        
+        # Additional penalty: even harder to get scores above 0.75
+        if score > 0.75:
+            # Apply additional scaling above 0.75 to make it extremely hard
+            excess = (score - 0.75) / 0.25  # Normalize excess to 0-1
+            # Square the excess, making it much harder
+            scaled_excess = excess ** 2
+            score = 0.75 + (scaled_excess * 0.25)
+        
         score = max(0.0, min(1.0, score))
         
         self.focus_scores.append(score)

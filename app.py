@@ -9,8 +9,12 @@ import numpy as np
 import time
 
 from eeg_backend import EEGStreamer, BetaWaveProcessor
+import eeg_backend
 from game_logic import CarRaceGame, GameState
 from leaderboard import Leaderboard
+
+# Check if BrainFlow is available
+BRAINFLOW_AVAILABLE = getattr(eeg_backend, 'BRAINFLOW_AVAILABLE', False)
 
 # Configure Streamlit page
 st.set_page_config(
@@ -34,7 +38,7 @@ if 'use_demo_mode' not in st.session_state:
 if 'player_name' not in st.session_state:
     st.session_state.player_name = "Player1"
 if 'focus_threshold' not in st.session_state:
-    st.session_state.focus_threshold = 30.0
+    st.session_state.focus_threshold = 70.0  # Increased from 30 to 70 for much harder difficulty
 
 
 def main():
@@ -57,17 +61,25 @@ def main():
         if not st.session_state.use_demo_mode:
             st.info("Connect your OpenBCI device")
             
+            # Board selection
+            board_type = st.selectbox(
+                "Board Type",
+                ["Cyton", "Ganglion", "Cyton + Daisy"],
+                key="board_type",
+                help="Select your OpenBCI board type. This must match your hardware."
+            )
+            
             # Connection options
             connection_type = st.radio(
                 "Connection Type",
-                ["Auto-detect", "Serial Port", "Bluetooth (MAC)"],
+                ["Serial Port (USB)", "Bluetooth (MAC)"],
                 key="connection_type"
             )
             
             serial_port = None
             mac_address = None
             
-            if connection_type == "Serial Port":
+            if connection_type == "Serial Port (USB)":
                 # Windows: COM3, COM4, etc.
                 # Mac: /dev/tty.usbserial-*
                 # Linux: /dev/ttyUSB0
@@ -77,29 +89,95 @@ def main():
                     placeholder="COM3 (Windows) or /dev/ttyUSB0 (Linux/Mac)",
                     key="serial_port_input"
                 )
+                st.caption("💡 Find your port: Windows (Device Manager) or Mac/Linux (ls /dev/tty*)")
             elif connection_type == "Bluetooth (MAC)":
                 mac_address = st.text_input(
                     "MAC Address",
                     value="",
-                    placeholder="XX:XX:XX:XX:XX:XX",
+                    placeholder="00:11:22:33:44:55",
                     key="mac_address_input"
                 )
+                st.caption("💡 Find MAC address in your computer's Bluetooth settings")
             
-            if st.button("Connect to OpenBCI", key="connect"):
-                streamer = EEGStreamer(use_demo=False)
-                if streamer.connect(serial_port=serial_port, mac_address=mac_address):
-                    if streamer.start_streaming():
-                        st.session_state.eeg_streamer = streamer
-                        st.success("Connected! ✅")
+            if st.button("Connect to OpenBCI", type="primary", key="connect"):
+                try:
+                    # Validate BrainFlow availability
+                    if not BRAINFLOW_AVAILABLE:
+                        st.error("BrainFlow not installed! Run: pip install brainflow")
+                        st.stop()
+                    
+                    # Import BrainFlow board IDs
+                    from brainflow.board_shim import BoardIds
+                    
+                    # Map board type to BrainFlow ID
+                    board_id_map = {
+                        "Cyton": BoardIds.CYTON_BOARD.value,
+                        "Ganglion": BoardIds.GANGLION_BOARD.value,
+                        "Cyton + Daisy": BoardIds.CYTON_DAISY_BOARD.value,
+                    }
+                    
+                    board_id = board_id_map.get(board_type)
+                    if board_id is None:
+                        st.error(f"Invalid board type: {board_type}")
+                        st.stop()
+                    
+                    # Clean up input: convert empty strings to None
+                    if serial_port and serial_port.strip():
+                        serial_port = serial_port.strip()
                     else:
-                        st.error("Failed to start streaming")
-                else:
-                    st.error("Connection failed. Please check:")
-                    st.error("1. Device is connected and powered on")
-                    st.error("2. Serial port/MAC address is correct")
-                    st.error("3. No other applications are using the device")
-                    st.error("4. Drivers are installed (Windows)")
-                    st.info("💡 See OPENBCI_SETUP.md for detailed instructions")
+                        serial_port = None
+                    
+                    if mac_address and mac_address.strip():
+                        mac_address = mac_address.strip()
+                    else:
+                        mac_address = None
+                    
+                    # Validate connection parameters
+                    if connection_type == "Serial Port (USB)":
+                        if not serial_port:
+                            st.error("❌ Please enter a serial port (e.g., COM3 or /dev/ttyUSB0)")
+                            st.stop()
+                        # Ganglion via USB should work with serial port
+                        # Cyton always uses serial port
+                    elif connection_type == "Bluetooth (MAC)":
+                        if not mac_address:
+                            st.error("❌ Please enter a MAC address (e.g., 00:11:22:33:44:55)")
+                            st.stop()
+                        # Only Ganglion supports BLE
+                        if board_type != "Ganglion":
+                            st.warning("⚠️ Bluetooth connection is only supported for Ganglion boards")
+                            st.stop()
+                    
+                    # Show connection attempt info
+                    with st.spinner(f"Connecting to {board_type}..."):
+                        streamer = EEGStreamer(use_demo=False)
+                        if streamer.connect(serial_port=serial_port, mac_address=mac_address, board_id=board_id):
+                            if streamer.start_streaming():
+                                st.session_state.eeg_streamer = streamer
+                                st.success("Connected! ✅")
+                                st.rerun()
+                            else:
+                                st.error("❌ Connected but failed to start streaming")
+                                st.error("Check that the board is powered on and ready")
+                        else:
+                            st.error("❌ Connection failed")
+                            st.error("**Common issues:**")
+                            st.error("1. Device is not connected or powered on")
+                            st.error(f"2. {'Serial port' if serial_port else 'MAC address'} is incorrect")
+                            st.error("3. Board type doesn't match your device")
+                            st.error("4. Another application is using the device")
+                            st.error("5. Drivers not installed (Windows) - Install FTDI drivers")
+                            st.error("6. Device not in the correct mode")
+                            st.info("💡 **Windows Drivers**: Download FTDI VCP drivers from https://ftdichip.com/drivers/vcp-drivers/")
+                            st.info("💡 See WINDOWS_DRIVERS.md for detailed driver installation instructions")
+                            st.info("💡 Check the terminal/console for detailed error messages")
+                except Exception as e:
+                    import traceback
+                    error_details = traceback.format_exc()
+                    st.error(f"❌ Connection error: {str(e)}")
+                    with st.expander("Show detailed error"):
+                        st.code(error_details)
+                    st.info("💡 See QUICK_CONNECT.md for troubleshooting steps")
         
         # Player name
         st.text_input(
@@ -108,14 +186,18 @@ def main():
             key="player_name"
         )
         
-        # Focus threshold
+        # Focus threshold (for beta power, not normalized focus score)
         st.slider(
             "Focus Threshold",
             10.0, 100.0,
             st.session_state.focus_threshold,
             1.0,
-            key="focus_threshold"
+            key="focus_threshold",
+            help="Beta power threshold. Higher = requires more focus to move. Game uses normalized threshold (80% default - very hard!)."
         )
+        
+        # Show game difficulty info
+        st.caption("🎯 **Difficulty**: EXTREMELY HIGH focus required! Need ~80%+ focus to move, ~90%+ for good speed.")
         
         # Show calibrated threshold if available
         if 'calibrated_threshold' in st.session_state:
@@ -123,7 +205,7 @@ def main():
         
         # Update game threshold - focus_score is 0-1, so threshold should be 0-1
         if st.session_state.game.focus_threshold <= 0 or st.session_state.game.focus_threshold > 1:
-            st.session_state.game.focus_threshold = 0.6  # Default normalized threshold
+            st.session_state.game.focus_threshold = 0.80  # Default normalized threshold (80% - much harder!)
         
         # Leaderboard
         st.subheader("🏆 Leaderboard")
@@ -206,7 +288,7 @@ def render_race():
         
         # Update game threshold
         if game.focus_threshold <= 0 or game.focus_threshold > 1:
-            game.focus_threshold = 0.6  # Default normalized threshold
+            game.focus_threshold = 0.80  # Default normalized threshold (80% - much harder!)
         
         # Update game
         game.update_focus(focus_score)
@@ -273,7 +355,8 @@ def render_calibration():
         
         if st.button("Start Race", key="start_after_calibration"):
             # Set normalized threshold for game (focus_score is 0-1)
-            game.focus_threshold = 0.6  # Normalized threshold
+            # Increased threshold for much harder difficulty
+            game.focus_threshold = 0.80  # Normalized threshold (80% - much harder!)
             game.start_race()
             st.rerun()
     else:
@@ -288,98 +371,114 @@ def render_calibration():
 
 
 def render_race_track(game_data: dict):
-    """Render race track using Plotly."""
+    """Render simplified horizontal race track with block car."""
+    
+    st.markdown("### Race Track")
+    
+    # Get progress - ensure valid value
+    progress = game_data.get('progress', 0.0)
+    progress = max(0.0, min(progress, 100.0))  # Clamp to valid range
+    
+    # Create simple Plotly visualization
     fig = go.Figure()
     
-    # Background (track)
+    # Track background (horizontal bar)
+    track_y = 0.5
+    track_height = 0.4
     fig.add_shape(
         type="rect",
-        x0=0, y0=0, x1=800, y1=600,
+        x0=0, y0=track_y - track_height/2, x1=100, y1=track_y + track_height/2,
         fillcolor="#1a1a1a",
-        line=dict(color="white", width=2)
+        line=dict(color="#666", width=3),
+        layer="below"
     )
     
-    # Draw track lines
-    for y in range(0, 600, 50):
-        fig.add_shape(
-            type="line",
-            x0=350, y0=y, x1=450, y1=y,
-            line=dict(color="yellow", width=2, dash="dash")
-        )
-    
-    # Finish line (top)
+    # Start line (green) - wider for visibility
     fig.add_shape(
         type="rect",
-        x0=0, y0=0, x1=800, y1=20,
-        fillcolor="green",
-        line=dict(color="white", width=2),
-        opacity=0.5
+        x0=0, y0=track_y - track_height/2, x1=3, y1=track_y + track_height/2,
+        fillcolor="#00ff00",
+        line=dict(color="#00aa00", width=2),
+        layer="above"
     )
     
-    if game_data['state'] == 'racing' or game_data['state'] == 'finished':
-        # Draw car
-        car_x = game_data['car_x']
-        car_y = game_data['car_y']
-        # Clamp to visible area
-        car_x = max(25, min(775, car_x))
-        car_y = max(25, min(575, car_y))
-        
+    # Finish line (red) - wider for visibility
+    fig.add_shape(
+        type="rect",
+        x0=97, y0=track_y - track_height/2, x1=100, y1=track_y + track_height/2,
+        fillcolor="#ff0000",
+        line=dict(color="#aa0000", width=2),
+        layer="above"
+    )
+    
+    # Car block (red square) - always show if racing or finished
+    if game_data['state'] in ['racing', 'finished']:
+        # Use actual progress, but clamp for visibility
+        car_pos = max(3.0, min(progress, 97.0))
         fig.add_trace(go.Scatter(
-            x=[car_x],
-            y=[car_y],
+            x=[car_pos],
+            y=[track_y],
             mode='markers',
-            marker=dict(size=40, color='red', symbol='square', line=dict(width=3, color='white')),
-            name='Car'
+            marker=dict(
+                size=40,
+                color='#ff4444',
+                symbol='square',
+                line=dict(width=4, color='white'),
+                opacity=0.9
+            ),
+            name='Car',
+            showlegend=False,
+            hovertemplate='Car<br>Progress: %{x:.1f}%<extra></extra>'
         ))
-        
-        # Progress bar
-        progress = game_data['progress']
+    elif game_data['state'] == 'menu':
+        # Show car at start line in menu
+        fig.add_trace(go.Scatter(
+            x=[2.0],
+            y=[track_y],
+            mode='markers',
+            marker=dict(
+                size=40,
+                color='#888888',
+                symbol='square',
+                line=dict(width=4, color='white'),
+                opacity=0.5
+            ),
+            name='Car',
+            showlegend=False
+        ))
+    
+    # Progress bar below track
+    if game_data['state'] in ['racing', 'finished']:
         fig.add_shape(
             type="rect",
-            x0=50, y0=580, x1=50 + (700 * progress / 100), y1=590,
-            fillcolor="blue",
-            line=dict(color="white", width=1)
+            x0=0, y0=0.15, x1=progress, y1=0.20,
+            fillcolor="#4444ff",
+            line=dict(color="#2222aa", width=1),
+            layer="above"
         )
-    
-    elif game_data['state'] == 'finished':
-        # Finished screen
+        # Progress text
         fig.add_annotation(
-            x=400, y=300,
-            text="🏁 FINISHED!",
+            x=progress/2, y=0.175,
+            text=f"{progress:.1f}%",
             showarrow=False,
-            font=dict(size=40, color="green")
-        )
-        fig.add_annotation(
-            x=400, y=250,
-            text=f"Time: {game_data['race_time']:.2f}s",
-            showarrow=False,
-            font=dict(size=24, color="white")
-        )
-    else:
-        # Menu screen
-        fig.add_annotation(
-            x=400, y=300,
-            text="🏎️ EEG CAR RACE",
-            showarrow=False,
-            font=dict(size=30, color="cyan")
-        )
-        fig.add_annotation(
-            x=400, y=250,
-            text="Click 'Start Race' to begin",
-            showarrow=False,
-            font=dict(size=18, color="white")
+            font=dict(size=12, color="white"),
+            bgcolor="rgba(0,0,0,0.5)",
+            bordercolor="white",
+            borderwidth=1
         )
     
     fig.update_layout(
-        xaxis=dict(range=[0, 800], showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(range=[600, 0], showgrid=False, zeroline=False, showticklabels=False),
+        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(range=[0, 1], showgrid=False, zeroline=False, showticklabels=False),
         template='plotly_dark',
-        height=500,
+        height=250,
         showlegend=False,
-        margin=dict(l=0, r=0, t=0, b=0)
+        margin=dict(l=10, r=10, t=10, b=10),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
     )
     
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     # Race stats
     if game_data['state'] == 'racing':
@@ -391,6 +490,8 @@ def render_race_track(game_data: dict):
     elif game_data['state'] == 'finished':
         st.success(f"🏁 Race Finished! Time: {game_data['race_time']:.2f}s")
         st.info("Check the leaderboard to see your rank!")
+    else:
+        st.info("Click 'Start Race' to begin")
 
 
 def render_focus_tracker():
