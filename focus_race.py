@@ -1,7 +1,7 @@
 import pygame
 import sys
 import random
-import socket
+
 # --------------------------
 # CONFIG
 # --------------------------
@@ -23,19 +23,9 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 28, bold=True)
 small_font = pygame.font.SysFont("Arial", 20)
 
-# Setup UDP to receive focus data
-UDP_IP = "127.0.0.1"
-UDP_PORT = 5005
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((UDP_IP, UDP_PORT))
-sock.setblocking(False)
-
-focus_value = 0.0  # global focus value (0–100)
-
-
 # Load background
 try:
-    grass_img = pygame.image.load("grass.jpg").convert()
+    grass_img = pygame.image.load("images/grass.jpg").convert()
     grass_img = pygame.transform.smoothscale(grass_img, (WIDTH, HEIGHT))
 except Exception:
     grass_img = pygame.Surface((WIDTH, HEIGHT))
@@ -62,8 +52,8 @@ def load_and_scale(path, fallback_color):
         img.fill(fallback_color)
     return img
 
-player_img = load_and_scale("yellow-car.png", RED)
-ai_img = load_and_scale("white-car.png", GREEN)
+player_img = load_and_scale("images/yellow-car.png", RED)
+ai_img = load_and_scale("images/white-car.png", GREEN)
 
 # --------------------------
 # CLASSES
@@ -114,13 +104,13 @@ def draw_ui(focus, player, ai):
 
     # Determine color based on focus range
     if focus < 25:
-        color = (230, 50, 50)
+        color = (230, 50, 50)       # red
     elif focus < 50:
-        color = (255, 150, 0)
+        color = (255, 150, 0)       # orange
     elif focus < 75:
-        color = (255, 230, 0)
+        color = (255, 230, 0)       # yellow
     else:
-        color = (0, 200, 0)
+        color = (0, 200, 0)         # green
 
     # Fill proportionally to focus %
     filled_w = int((focus / 100) * bar_w)
@@ -130,12 +120,12 @@ def draw_ui(focus, player, ai):
     text = font.render(f"Focus: {focus:.0f}%", True, WHITE)
     screen.blit(text, (bar_x + bar_w + 20, bar_y - 5))
 
+    # Compute player & AI distances
     total_path = max(FINISH_LINE - 50 - player.img.get_width(), 1)
     player_dist = min(max((player.x / total_path) * 100, 0), 100)
     ai_dist = min(max((ai.x / total_path) * 100, 0), 100)
 
     return player_dist, ai_dist
-
 
 
 def draw_comment(diff):
@@ -353,12 +343,6 @@ def main():
 
     while running:
         dt = clock.tick(FPS)
-        try:
-            data, _ = sock.recvfrom(1024)
-            focus_value = float(data.decode()) * 100  # convert 0–1 → 0–100
-        except BlockingIOError:
-            pass
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -366,13 +350,13 @@ def main():
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_UP]:
-            focus_value = min(focus_value + 1, 100)
+            focus = min(focus + 1, 100)
         elif keys[pygame.K_DOWN]:
-            focus_value = max(focus_value - 1, 0)
+            focus = max(focus - 1, 0)
         else:
-            focus_value = max(focus_value - 0.05, 0)
+            focus = max(focus - 0.05, 0)
 
-        player.speed = map_focus_to_speed(focus_value)
+        player.speed = map_focus_to_speed(focus)
         ai.speed = AI_SPEED
 
         if focus >= 75:
@@ -386,8 +370,7 @@ def main():
         player.draw()
         ai.draw()
 
-        player_dist, ai_dist = draw_ui(focus_value, player, ai)
-
+        player_dist, ai_dist = draw_ui(focus, player, ai)
         diff = player_dist - ai_dist
         draw_comment(diff)
 
