@@ -1,42 +1,162 @@
+"""
+Focus Server - Processes OpenBCI EEG data and sends focus scores to the game.
+Uses the same EEG backend as app.py for OpenBCI hardware integration.
+"""
+
 import socket
-import numpy as np
-from scipy.signal import welch
 import time
+import argparse
+import sys
+from eeg_backend import EEGStreamer, BetaWaveProcessor
+import eeg_backend
 
-# Receive raw EEG data from OpenBCI GUI (UDP)
+# Check if BrainFlow is available
+BRAINFLOW_AVAILABLE = getattr(eeg_backend, 'BRAINFLOW_AVAILABLE', False)
+
+# UDP socket to send focus to game
 UDP_IP = "127.0.0.1"
-UDP_PORT_IN = 12345  # same as in OpenBCI GUI
-UDP_PORT_OUT = 5005  # game + display listen here
-
-sock_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock_in.bind((UDP_IP, UDP_PORT_IN))
+UDP_PORT_OUT = 5005  # game listens here
 
 sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-def compute_focus(eeg, fs=200):
-    """Compute beta/alpha power ratio as focus intensity (0–1)."""
-    freqs, psd = welch(eeg, fs=fs, nperseg=fs*2)
-    alpha = np.sum(psd[(freqs >= 8) & (freqs <= 13)])
-    beta  = np.sum(psd[(freqs >= 13) & (freqs <= 30)])
-    focus = beta / (alpha + 1e-6)
-    return float(np.clip(focus / 5, 0, 1))  # normalize
+# Default focus threshold (beta power threshold, not normalized focus score)
+DEFAULT_FOCUS_THRESHOLD = 70.0
 
-buffer = []
 
-print("Listening for EEG data on port", UDP_PORT_IN)
-while True:
-    data, _ = sock_in.recvfrom(1024)
+def main():
+    """Main server loop."""
+    parser = argparse.ArgumentParser(description='Focus Server for EEG Car Race Game')
+    parser.add_argument('--demo', action='store_true', help='Use demo mode (no hardware)')
+    parser.add_argument('--board-type', choices=['Cyton', 'Ganglion', 'Cyton + Daisy'], 
+                       default='Cyton', help='OpenBCI board type (hardware mode only)')
+    parser.add_argument('--serial-port', type=str, default=None,
+                       help='Serial port (e.g., COM3 on Windows, /dev/ttyUSB0 on Linux/Mac)')
+    parser.add_argument('--mac-address', type=str, default=None,
+                       help='MAC address for Bluetooth connection (Ganglion only)')
+    parser.add_argument('--threshold', type=float, default=DEFAULT_FOCUS_THRESHOLD,
+                       help='Focus threshold (beta power threshold)')
+    parser.add_argument('--update-rate', type=float, default=0.016,
+                       help='Update rate in seconds (default: 0.016 = ~60 Hz to match game FPS)')
+    
+    args = parser.parse_args()
+    
+    # Initialize EEG streamer
+    use_demo = args.demo
+    if not use_demo and not BRAINFLOW_AVAILABLE:
+        print("⚠️ BrainFlow not available. Falling back to demo mode.")
+        use_demo = True
+    
+    print("=" * 60)
+    print("Focus Server - EEG Car Race")
+    print("=" * 60)
+    
+    if use_demo:
+        print("📱 Mode: DEMO (synthetic EEG data)")
+        eeg_streamer = EEGStreamer(use_demo=True)
+    else:
+        print("🔌 Mode: HARDWARE (OpenBCI)")
+        print(f"   Board Type: {args.board_type}")
+        if args.serial_port:
+            print(f"   Serial Port: {args.serial_port}")
+        elif args.mac_address:
+            print(f"   MAC Address: {args.mac_address}")
+        else:
+            print("   ⚠️ No connection method specified. Using default COM3")
+            args.serial_port = "COM3"
+        
+        # Map board type to BrainFlow ID
+        if not BRAINFLOW_AVAILABLE:
+            print("❌ BrainFlow not installed! Install with: pip install brainflow")
+            sys.exit(1)
+        
+        from brainflow.board_shim import BoardIds
+        board_id_map = {
+            "Cyton": BoardIds.CYTON_BOARD.value,
+            "Ganglion": BoardIds.GANGLION_BOARD.value,
+            "Cyton + Daisy": BoardIds.CYTON_DAISY_BOARD.value,
+        }
+        board_id = board_id_map.get(args.board_type)
+        if board_id is None:
+            print(f"❌ Invalid board type: {args.board_type}")
+            sys.exit(1)
+        
+        # Initialize streamer
+        eeg_streamer = EEGStreamer(use_demo=False)
+        
+        # Connect to hardware
+        print("   Connecting to OpenBCI...")
+        if eeg_streamer.connect(
+            serial_port=args.serial_port,
+            mac_address=args.mac_address,
+            board_id=board_id
+        ):
+            print("   ✅ Connected!")
+        else:
+            print("   ❌ Connection failed!")
+            print("   Common issues:")
+            print("   1. Device not connected or powered on")
+            print("   2. Serial port/MAC address is incorrect")
+            print("   3. Board type doesn't match your device")
+            print("   4. Another application is using the device")
+            print("   5. Drivers not installed (Windows)")
+            sys.exit(1)
+    
+    # Start streaming
+    print("   Starting EEG streaming...")
+    if eeg_streamer.start_streaming():
+        print("   ✅ Streaming started!")
+    else:
+        print("   ❌ Failed to start streaming!")
+        eeg_streamer.disconnect()
+        sys.exit(1)
+    
+    # Initialize processor
+    processor = BetaWaveProcessor()
+    focus_threshold = args.threshold
+    
+    print(f"   Focus Threshold: {focus_threshold}")
+    print(f"   Update Rate: {args.update_rate * 1000:.0f} ms ({1/args.update_rate:.1f} Hz)")
+    print(f"   Sending focus to: {UDP_IP}:{UDP_PORT_OUT}")
+    print("=" * 60)
+    print("🚀 Server running! Start the game to see focus data.")
+    print("   Press Ctrl+C to stop.")
+    print("=" * 60)
+    
     try:
-        values = np.array(list(map(float, data.decode().strip().split(','))))
-        buffer.append(values[0])  # just first channel for now
-    except:
-        continue
+        while True:
+            # Get EEG data
+            data = eeg_streamer.get_data(n_samples=250)
+            if data is not None:
+                processor.add_data(data)
+            
+            # Get beta power and compute focus score
+            beta_power = processor.get_beta_power()
+            focus_score = processor.get_focus_score(beta_power, focus_threshold)
+            
+            # Send focus score to game (0.0 to 1.0)
+            # The game will multiply by 100 to get 0-100%
+            msg = str(focus_score).encode()
+            sock_out.sendto(msg, (UDP_IP, UDP_PORT_OUT))
+            
+            # Print status
+            print(f"Focus: {focus_score:.3f} (Beta Power: {beta_power:.2f})", end='\r')
+            
+            # Sleep to control update rate
+            time.sleep(args.update_rate)
+    
+    except KeyboardInterrupt:
+        print("\n\n🛑 Stopping server...")
+    except Exception as e:
+        print(f"\n\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Cleanup
+        print("   Disconnecting...")
+        eeg_streamer.disconnect()
+        sock_out.close()
+        print("   ✅ Server stopped.")
 
-    if len(buffer) >= 400:  # ~2 seconds at 200Hz
-        eeg_segment = np.array(buffer[-400:])
-        focus = compute_focus(eeg_segment)
-        msg = str(focus).encode()
-        sock_out.sendto(msg, (UDP_IP, UDP_PORT_OUT))
-        print(f"Focus: {focus:.2f}")
-        buffer = buffer[-400:]
-        time.sleep(0.2)
+
+if __name__ == "__main__":
+    main()

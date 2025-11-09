@@ -19,9 +19,9 @@ WIDTH, HEIGHT = 900, 500
 FPS = 60
 FINISH_LINE = WIDTH - 120
 
-AI_SPEED = 9
+AI_SPEED = 14
 MIN_SPEED = 2
-MAX_SPEED = 16
+MAX_SPEED = 30
 
 # Desired sprite display size (width, height)
 SPRITE_W, SPRITE_H = 170, 100
