@@ -1,3 +1,5 @@
+<img width="2240" height="1260" alt="NeuroHue-2" src="https://github.com/user-attachments/assets/a310344a-5915-4306-8943-936a1f1ed88a" />
+
 # EEG Car Race Game
 
 A simple browser-based car race controlled entirely by EEG focus (beta waves) using OpenBCI and BrainFlow.
@@ -52,3 +54,27 @@ If no hardware is connected, the app automatically uses demo mode with synthetic
 2. **Race**: Maintain high focus to move faster
 3. **Finish**: Complete the race as fast as possible
 4. **Compete**: Check the leaderboard for your rank
+
+## Future
+- ML-based focus detection: Train a classifier to recognize focus vs. distraction patterns
+- Multiplayer races: Compete head-to-head via networked EEG streams
+- Expanded frequency bands: Track alpha/theta for relaxation or meditation
+- Advanced analytics: Historical focus tracking and personalized feedback
+- Enhanced visuals: Unity or WebGL for immersive gameplay
+- Integration: Combine with VR or color accessibility applications
+
+## Contributors
+- Jordan Kwan
+- Jinn Kasai
+- Eric Kane
+- Juan Rea
+- Dam Dung Nguyen Mong
+- Dam Hanh Nguyen Mong
+
+
+## Project Links
+- Devpost
+- Slide Deck
+- Demo Video
+
+## Resources
