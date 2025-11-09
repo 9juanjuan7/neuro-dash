@@ -2,6 +2,16 @@ import pygame
 import sys
 import random
 
+import socket
+
+# UDP socket to receive focus from server
+UDP_IP = "127.0.0.1"
+UDP_PORT = 5005
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((UDP_IP, UDP_PORT))
+sock.setblocking(False)  # so it doesn't freeze the game loop
+
 # --------------------------
 # CONFIG
 # --------------------------
@@ -348,13 +358,15 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            focus = min(focus + 1, 100)
-        elif keys[pygame.K_DOWN]:
-            focus = max(focus - 1, 0)
-        else:
-            focus = max(focus - 0.05, 0)
+        # Default if no new data arrives
+        focus = 50  
+
+        try:
+            data, _ = sock.recvfrom(1024)
+            focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
+        except BlockingIOError:
+            pass  # no new data this frame
+
 
         player.speed = map_focus_to_speed(focus)
         ai.speed = AI_SPEED

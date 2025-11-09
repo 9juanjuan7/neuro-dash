@@ -1,43 +1,38 @@
 import pygame
-import socket
+import random
+import time
 
 # Pygame setup
 pygame.init()
 screen = pygame.display.set_mode((300, 200))
-pygame.display.set_caption("Focus Intensity")
-
-# Receive focus data (same port as from focus_server.py)
-UDP_IP = "127.0.0.1"
-UDP_PORT = 5005
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((UDP_IP, UDP_PORT))
-sock.setblocking(False)
+pygame.display.set_caption("Focus Intensity (Mock Data)")
 
 focus = 0.0
 running = True
 clock = pygame.time.Clock()
+font = pygame.font.Font(None, 36)
+
+# For smooth transitions
+target_focus = random.random()
 
 while running:
-    # Handle window events
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    # Receive latest focus
-    try:
-        data, _ = sock.recvfrom(1024)
-        focus = float(data.decode())
-    except BlockingIOError:
-        pass
+    # Simulate focus changing gradually
+    if abs(focus - target_focus) < 0.02:
+        target_focus = random.random()  # pick a new random focus target
+    focus += (target_focus - focus) * 0.05  # smooth movement
+
+    # Draw background
+    screen.fill((30, 30, 30))
 
     # Draw focus bar
-    screen.fill((30, 30, 30))
     bar_height = int(focus * 150)
     pygame.draw.rect(screen, (0, 255, 0), (100, 180 - bar_height, 100, bar_height))
-    
+
     # Draw text
-    font = pygame.font.Font(None, 36)
     txt = font.render(f"Focus: {focus:.2f}", True, (255, 255, 255))
     screen.blit(txt, (60, 20))
 
