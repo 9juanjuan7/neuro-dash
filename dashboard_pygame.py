@@ -450,17 +450,11 @@ def main():
         status_panel_height = 300
         draw_status_panel(focus, ready_flag, connection_status, 50, 220, status_panel_width, status_panel_height)
         
-        # Info panel (right top)
-        info_panel_width = 350
-        info_panel_height = 280  # Increased from 250 to fit Minimum and Data Points
-        info_x = WIDTH - info_panel_width - 50
-        draw_info_panel(info_x, 220, info_panel_width, info_panel_height)
-        
-        # Control panel (right bottom) - draw and get button rects
+        # Control panel (right top, where statistics was) - draw and get button rects
         control_panel_width = 350
         control_panel_height = 200
         control_x = WIDTH - control_panel_width - 50
-        control_y = 220 + info_panel_height + 20
+        control_y = 220
         play_rect, quit_rect = draw_control_panel(control_x, control_y, control_panel_width, control_panel_height, args.pi_ip)
         
         # History chart (bottom, full width)
