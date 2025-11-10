@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import joblib
 
 # Try to import BrainFlow
 try:
@@ -342,12 +343,17 @@ class EEGStreamer:
 # -------------------------------
 class BetaWaveProcessor:
     def __init__(self, sampling_rate: int = 250, beta_band: tuple = (13.0, 30.0), model_path="focus_eegnet_4ch.pth"):
-        # model_path parameter kept for compatibility but model is disabled
+        from collections import deque
+        import torch
+        import numpy as np
+        import joblib
+        from scipy import signal
+
         self.sampling_rate = sampling_rate
         self.beta_band = beta_band
         self.buffer = deque(maxlen=sampling_rate)  # 1-second buffer
-        
-        # Design beta bandpass filter
+
+        # ====== β-Band Filter ======
         nyquist = sampling_rate / 2.0
         low = max(0.01, min(beta_band[0] / nyquist, 0.99))
         high = max(0.01, min(beta_band[1] / nyquist, 0.99))
@@ -355,40 +361,47 @@ class BetaWaveProcessor:
             self.b, self.a = signal.butter(4, [low, high], btype='band')
         else:
             self.b, self.a = None, None
-        
-        # History
+
+        # ====== Histories & Buffers ======
         self.beta_history = deque(maxlen=1000)
         self.focus_scores = deque(maxlen=1000)
         self.timestamps = deque(maxlen=1000)
-        
-        # Dynamic baseline for relative power calculation (DISABLED - using absolute power)
-        # self.baseline_beta_power = None
-        # self.baseline_samples = deque(maxlen=200)
-        # self.baseline_update_rate = 0.005
-        # self.baseline_initialized = False
-        
-        # Smoothing for focus scores (exponential moving average)
+
+        # ====== Baseline (if you want adaptive β-normalization later) ======
+        self.baseline_beta_power = None
+        self.baseline_samples = deque(maxlen=200)
+        self.baseline_update_rate = 0.005
+        self.baseline_initialized = False
+
+        # ====== Focus smoothing ======
         self.smoothed_focus = None
-        self.smoothing_alpha = 0.25  # 0.0 = no smoothing (instant), 1.0 = no change (fully smoothed)
-        # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
-        # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
-        
-        # Spike detection - track recent values to detect sudden jumps
-        self.recent_scores = deque(maxlen=10)  # Track last 10 scores
-        
-        # MODEL DISABLED - Using threshold method only
-        # # Load model
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
-        # try:
-        #     self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-        #     self.model.eval()
-        #     print("✅ EEGNet focus model loaded")
-        #     self.model_loaded = True
-        # except Exception as e:
-        #     print(f"❌ Failed to load model: {e}")
-        #     self.model_loaded = False
-        self.model_loaded = False  # Always use threshold method
+        self.smoothing_alpha = 0.25
+        self.recent_scores = deque(maxlen=10)
+
+        # ====== Device & Model Setup ======
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model_loaded = False
+
+        # Try to load model
+        try:
+            self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
+            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+            self.model.eval()
+            self.model_loaded = True
+            print("EEGNet focus model loaded successfully.")
+        except Exception as e:
+            print(f"Could not load model '{model_path}': {e}")
+            self.model = None
+
+        # Try to load scaler
+        try:
+            self.scaler = joblib.load("scaler.pkl")
+            print("Scaler loaded successfully.")
+        except Exception as e:
+            print(f"Could not load scaler: {e}")
+            self.scaler = None
+
+
 
     # Add EEG data to buffer
     def add_data(self, data: np.ndarray):
@@ -421,50 +434,60 @@ class BetaWaveProcessor:
 
     # Predict focus score using threshold method (model disabled)
     def get_focus_score(self, beta_power: float = None, threshold: float = None) -> float:
-        # MODEL DISABLED - Always use threshold method
-        # This is the original implementation before the model was added
-        return self._threshold_focus(beta_power, threshold)
-        
-        # MODEL CODE (COMMENTED OUT):
-        # if not self.model_loaded:
-        #     return self._threshold_focus(beta_power, threshold)
-        # 
-        # if len(self.buffer) == 0:
-        #     return 0.0
-        # 
-        # data = np.array(list(self.buffer)).T  # n_channels x n_samples
-        # if data.shape[0] != 4:
-        #     return 0.0
-        # if data.shape[1] > 250:
-        #     data = data[:, -250:]
-        # elif data.shape[1] < 250:
-        #     padding = np.zeros((4, 250 - data.shape[1]))
-        #     data = np.concatenate([padding, data], axis=1)
-        # 
-        # data_normalized = np.zeros_like(data)
-        # for ch in range(data.shape[0]):
-        #     channel_data = data[ch, :]
-        #     channel_mean = np.mean(channel_data)
-        #     channel_std = np.std(channel_data)
-        #     if channel_std > 1e-6:
-        #         data_normalized[ch, :] = (channel_data - channel_mean) / channel_std
-        #     else:
-        #         data_normalized[ch, :] = channel_data - channel_mean
-        # 
-        # data = data_normalized
-        # data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
-        # 
-        # try:
-        #     with torch.no_grad():
-        #         pred = self.model(data_tensor)
-        #         raw_score = pred.item()
-        #         score = max(0.0, min(1.0, raw_score))
-        # except Exception as e:
-        #     print(f"⚠️  Model inference error: {e}, falling back to threshold method")
-        #     return self._threshold_focus(beta_power, threshold)
-        # 
-        # self.focus_scores.append(score)
-        # return score
+        """
+            Compute focus score using the trained model if available,
+            otherwise fallback to threshold-based focus estimation.
+        """
+        # === Fallback: if model not loaded or empty buffer ===
+        if not getattr(self, "model_loaded", False):
+            return self._threshold_focus(beta_power, threshold)
+
+        if len(self.buffer) == 0:
+            return 0.0
+
+        # === Prepare EEG window ===
+        data = np.array(list(self.buffer)).T  # (4, n_samples)
+
+        # Pad or crop to 250 samples (1s window)
+        if data.shape[1] > 250:
+            data = data[:, -250:]
+        elif data.shape[1] < 250:
+            padding = np.zeros((4, 250 - data.shape[1]))
+            data = np.concatenate([padding, data], axis=1)
+
+        # === Apply saved StandardScaler per channel ===
+        try:
+            data_scaled = self.scaler.transform(data.T).T  # scale time dimension
+        except Exception as e:
+            print(f"⚠️ Scaler transform error: {e}, using manual normalization.")
+            # fallback manual normalization
+            data_scaled = np.zeros_like(data)
+            for ch in range(data.shape[0]):
+                channel = data[ch, :]
+                mu, sigma = np.mean(channel), np.std(channel)
+                data_scaled[ch, :] = (channel - mu) / (sigma + 1e-6)
+
+        # === Prepare tensor for model ===
+        x = torch.tensor(data_scaled, dtype=torch.float32).unsqueeze(0).to(self.device)  # (1, 4, 250)
+
+        # === Run inference ===
+        try:
+            with torch.no_grad():
+                pred = self.model(x)
+                raw_score = float(pred.item())
+                score = np.clip(raw_score, 0.0, 1.0)
+        except Exception as e:
+            print(f"⚠️ Model inference error: {e}, fallback to threshold.")
+            return self._threshold_focus(beta_power, threshold)
+
+        # === Store and print ===
+        self.focus_scores.append(score)
+        focus_percent = score * 100
+
+        print(f"🎯 Focus Level: {focus_percent:.2f}%")
+
+        return score
+
 
     # Old threshold-based fallback
     def _threshold_focus(self, beta_power: float, threshold: float) -> float:

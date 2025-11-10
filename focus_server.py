@@ -26,6 +26,7 @@ sock_out_dashboard = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # Default focus threshold (beta power threshold, not normalized focus score)
 DEFAULT_FOCUS_THRESHOLD = 70
 
+
 lister = []
 
 def main():
