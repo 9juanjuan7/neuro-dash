@@ -45,7 +45,16 @@ Built with **OpenBCI Ganglion**, **Pygame**, and **Streamlit**, the system lets 
 - Mock EEG Generator — Enables testing without hardware  
 
 **Hardware**
-- OpenBCI Ganglion Board — 4-channel EEG acquisition system  
+- OpenBCI Ganglion Board — 4-channel EEG acquisition system
+
+**Focus Detection Model**
+- Model: EEGNet4Ch — a 4-channel EEG convolutional neural network
+- Purpose: Predicts focus level from raw EEG input instead of using a static beta power threshold
+- Input: 4 EEG channels × 250 timepoints (1 second of EEG at 250 Hz)
+- Output: Probability of being focused (0.0–1.0)
+- Training Data: Labeled EEG recordings with focus / not focus annotations
+- Notebook: [EEG_training.ipynb](https://colab.research.google.com/drive/1J6ctrXqC9HnhXXJIPyBqc42KmniFzq7O?usp=sharing) contains model training, evaluation metrics, and visualizations
+- Weights: [focus_eegnet_4ch.pth](https://github.com/9juanjuan7/neuro-dash/blob/main/focus_eegnet_4ch.pth) — pre-trained model for inference
 
 ---
 
@@ -81,3 +90,4 @@ streamlit run dashboard.py
 - Demo Video
 
 ## References
+- Lawhern VJ, Solon AJ, Waytowich NR, Gordon SM, Hung CP, Lance BJ. EEGNet: a compact convolutional neural network for EEG-based brain-computer interfaces. J Neural Eng. 2018 Oct;15(5):056013. doi: 10.1088/1741-2552/aace8c. Epub 2018 Jun 22. PMID: 29932424. [EEGNet](https://github.com/aliasvishnu/EEGNet)
