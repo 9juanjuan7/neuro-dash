@@ -15,8 +15,8 @@ A simple browser-based car race controlled entirely by EEG focus (beta waves) us
 
 ## How to run
 
+Launch the server:
 ```bash
-Launch the server
 python focus_server.py --board-type Ganglion --serial-port COM3
 ```
 Run the game:
