@@ -60,7 +60,7 @@ def main():
     parser.add_argument('--threshold', type=float, default=DEFAULT_FOCUS_THRESHOLD,
                        help='Focus threshold (beta power threshold, default: 70.0, try higher like 100-150 if too sensitive)')
     parser.add_argument('--update-rate', type=float, default=0.016,
-                       help='Update rate in seconds (default: 0.016 = ~60 Hz)')
+                       help='Update rate in seconds (default: 0.016 = ~60 Hz, matches focus_server.py)')
     parser.add_argument('--mode', choices=['game', 'dashboard', 'both'], default='both',
                        help='Which application(s) to send data to (default: both)')
     
@@ -129,11 +129,13 @@ def main():
             last_time = current_time
             
             # Get EEG data from LSL
+            # Match main branch: get 250 samples per update (same as focus_server.py)
             data = lsl_reader.get_data(n_samples=250)
             if data is not None:
                 processor.add_data(data)
             
             # Compute beta power and attention score
+            # This matches exactly how focus_server.py does it on main branch
             beta_power = processor.get_beta_power()
             attention_score = processor.get_focus_score(beta_power, focus_threshold)
             
