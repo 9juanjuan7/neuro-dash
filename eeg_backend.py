@@ -458,20 +458,32 @@ class LSLReader:
         """
         try:
             print(f"Looking for LSL stream: {self.stream_name}...")
+            print(f"   Timeout: {self.timeout} seconds")
+            print(f"   Network: Checking for streams on local network...")
+            
             # Resolve all streams and filter by name
             all_streams = pylsl.resolve_streams(wait_time=self.timeout)
+            
+            print(f"   Found {len(all_streams)} total LSL stream(s) on network")
             
             # Filter streams by name
             streams = [s for s in all_streams if s.name() == self.stream_name]
             
             if len(streams) == 0:
-                print(f"❌ No LSL stream found with name: {self.stream_name}")
+                print(f"❌ No LSL stream found with name: '{self.stream_name}'")
                 if len(all_streams) > 0:
                     print(f"   Found {len(all_streams)} stream(s) with other names:")
                     for s in all_streams:
-                        print(f"     - {s.name()}")
+                        print(f"     - Name: '{s.name()}' | Type: '{s.type()}' | Source: '{s.source_id()}'")
+                    print(f"\n   💡 Try using one of the stream names above with --stream-name")
                 else:
-                    print("   No LSL streams found. Make sure OpenBCI GUI LSL stream is started")
+                    print("   No LSL streams found on network.")
+                    print("\n   🔍 Troubleshooting:")
+                    print("      1. Make sure OpenBCI GUI is running and LSL stream is started")
+                    print("      2. Check that both devices are on the same network")
+                    print("      3. Check firewall settings (LSL uses ports 16571-16575)")
+                    print("      4. Try increasing timeout: LSLReader(timeout=10.0)")
+                    print("      5. On the OpenBCI GUI machine, check if firewall is blocking multicast")
                 return False
             
             # Get stream info

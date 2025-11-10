@@ -93,7 +93,8 @@ def main():
     # Connect to LSL stream
     print("\n🔌 Connecting to LSL stream...")
     print("   Make sure OpenBCI GUI is running and LSL stream is started!")
-    lsl_reader = LSLReader(stream_name=args.stream_name, timeout=10.0)
+    print("   Both devices must be on the same network for LSL to work.")
+    lsl_reader = LSLReader(stream_name=args.stream_name, timeout=15.0)
     
     if not lsl_reader.connect():
         print("❌ Failed to connect to LSL stream!")
