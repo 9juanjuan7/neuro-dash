@@ -158,8 +158,9 @@ def render_status():
 # -----------------------------
 # UDP socket to receive focus from server (same as focus_race.py)
 # Store socket in session state to persist across Streamlit reruns
+# Bind to 0.0.0.0 to accept from localhost (from forwarder) or external sources
 # -----------------------------
-UDP_IP = "127.0.0.1"
+UDP_IP = "0.0.0.0"  # Accept from localhost (forwarder) or external sources
 if "udp_sock" not in ss:
     ss.udp_sock = None
     ss.socket_bound = False

@@ -98,11 +98,15 @@ def main():
             print(f"📤 Game UDP (localhost): 127.0.0.1:{args.game_port}")
     
     if args.mode in ['dashboard', 'both']:
-        sock_dashboard = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"📤 Dashboard UDP: {args.pi_ip}:{args.dashboard_port}")
+        # Dashboard runs on laptop, so always send to localhost
+        sock_dashboard_local = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"📤 Dashboard UDP: 127.0.0.1:{args.dashboard_port} (localhost - dashboard on laptop)")
+        # Also send to Pi if needed (for testing)
         if args.also_localhost:
-            sock_dashboard_local = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            print(f"📤 Dashboard UDP (localhost): 127.0.0.1:{args.dashboard_port}")
+            sock_dashboard = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"📤 Dashboard UDP (Pi): {args.pi_ip}:{args.dashboard_port}")
+        else:
+            sock_dashboard = None
     
     # Connect to LSL stream locally
     print("\n🔌 Connecting to LSL stream locally...")
@@ -176,13 +180,7 @@ def main():
                     print(f"⚠️  Error sending to game (localhost): {e}")
             
             # Send to dashboard (attention score and ready flag)
-            if sock_dashboard is not None:
-                # Format: "attention_score,ready_flag"
-                msg = f"{attention_score:.4f},{1 if ready_flag else 0}".encode()
-                try:
-                    sock_dashboard.sendto(msg, (args.pi_ip, args.dashboard_port))
-                except Exception as e:
-                    print(f"⚠️  Error sending to dashboard (Pi): {e}")
+            # Dashboard runs on laptop, so send to localhost by default
             if sock_dashboard_local is not None:
                 # Format: "attention_score,ready_flag"
                 msg = f"{attention_score:.4f},{1 if ready_flag else 0}".encode()
@@ -190,6 +188,14 @@ def main():
                     sock_dashboard_local.sendto(msg, ('127.0.0.1', args.dashboard_port))
                 except Exception as e:
                     print(f"⚠️  Error sending to dashboard (localhost): {e}")
+            # Also send to Pi if --also-localhost is used (for testing)
+            if sock_dashboard is not None:
+                # Format: "attention_score,ready_flag"
+                msg = f"{attention_score:.4f},{1 if ready_flag else 0}".encode()
+                try:
+                    sock_dashboard.sendto(msg, (args.pi_ip, args.dashboard_port))
+                except Exception as e:
+                    print(f"⚠️  Error sending to dashboard (Pi): {e}")
             
             # Print status
             ready_status = "🟢 READY" if ready_flag else "⚪ Not Ready"
