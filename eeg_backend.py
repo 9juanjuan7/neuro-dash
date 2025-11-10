@@ -468,7 +468,8 @@ class BetaWaveProcessor:
                 data_scaled[ch, :] = (channel - mu) / (sigma + 1e-6)
 
         # === Prepare tensor for model ===
-        x = torch.tensor(data_scaled, dtype=torch.float32).unsqueeze(0).to(self.device)  # (1, 4, 250)
+        # Model expects (batch, 1, channels, timepoints) = (1, 1, 4, 250)
+        x = torch.tensor(data_scaled, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)  # (1, 1, 4, 250)
 
         # === Run inference ===
         try:
