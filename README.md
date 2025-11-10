@@ -3,7 +3,7 @@
 # NeuroDash: EEG-Powered Focus Racing Game
 
 **NeuroDash** is a neurofeedback game that transforms attention training into an engaging racing experience.  
-Built with **OpenBCI Ganglion**, **Pygame**, and **Streamlit**, the system lets players control a car using their brainwaves — while clinicians or researchers can monitor focus levels in real time through a separate dashboard.
+Built with **OpenBCI Ganglion** and **Pygame**, the system lets players control a car using their brainwaves — while clinicians or researchers can monitor focus levels in real time through a separate dashboard.
 
 ---
 
@@ -16,11 +16,13 @@ Built with **OpenBCI Ganglion**, **Pygame**, and **Streamlit**, the system lets 
 - **Gamified Focus Training**: Improve attention while having fun  
 
 ### For Clinicians / Researchers
-- **Real-Time Dashboard** (Streamlit) showing:
+- **Real-Time Dashboard** (Pygame) showing:
   - Live focus intensity graph  
-  - Beta/Alpha ratio trends  
-  - Player session metrics and status  
+  - Connection status and ready state
+  - Player session metrics and statistics
+  - Game control buttons (Play Again, Quit)
 - **Dual-UI Architecture**: Game and dashboard run simultaneously, sharing data from the same backend
+- **LSL Streaming**: Support for distributed setups with game on Raspberry Pi and dashboard on laptop
 
 ---
 
@@ -37,7 +39,7 @@ Built with **OpenBCI Ganglion**, **Pygame**, and **Streamlit**, the system lets 
 
 **Frontend**
 - Pygame — Interactive racing game UI for players  
-- Streamlit — Focus visualization dashboard for clinicians  
+- Pygame — Doctor-facing dashboard for monitoring and control  
 
 **Backend**
 - Python + Socket Communication — Real-time data streaming between EEG, dashboard, and game  
@@ -47,14 +49,10 @@ Built with **OpenBCI Ganglion**, **Pygame**, and **Streamlit**, the system lets 
 **Hardware**
 - OpenBCI Ganglion Board — 4-channel EEG acquisition system
 
-**Focus Detection Model**
-- Model: EEGNet4Ch — a 4-channel EEG convolutional neural network
-- Purpose: Predicts focus level from raw EEG input instead of using a static beta power threshold
-- Input: 4 EEG channels × 250 timepoints (1 second of EEG at 250 Hz)
-- Output: Probability of being focused (0.0–1.0)
-- Training Data: Labeled EEG recordings with focus / not focus annotations
-- Notebook: [EEG_training.ipynb](https://colab.research.google.com/drive/1J6ctrXqC9HnhXXJIPyBqc42KmniFzq7O?usp=sharing) contains model training, evaluation metrics, and visualizations
-- Weights: [focus_eegnet_4ch.pth](https://github.com/9juanjuan7/neuro-dash/blob/main/focus_eegnet_4ch.pth) — pre-trained model for inference
+**Focus Detection**
+- Uses beta wave power analysis for real-time focus calculation
+- Threshold-based approach with dynamic sensitivity adjustment
+- LSL streaming support for distributed setups (game on Pi, dashboard on laptop)
 
 ---
 
@@ -74,7 +72,7 @@ python  focu_game.py
 ```
 ### 3. Launch the Dashboard (Clinician View)
 ```bash
-streamlit run dashboard.py
+python dashboard_pygame.py --pi-ip <pi-ip-address>
 ```
 ## Team
 - Jordan Kwan

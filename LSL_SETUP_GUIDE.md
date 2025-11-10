@@ -74,7 +74,7 @@ This will:
 Then start the dashboard:
 
 ```bash
-streamlit run dashboard.py
+python dashboard_pygame.py --pi-ip <pi-ip-address>
 ```
 
 ## Step 5: Verify Connection
