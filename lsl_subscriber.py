@@ -65,6 +65,7 @@ def main():
     
     if not PYLSL_AVAILABLE:
         print("❌ pylsl not available. Install with: pip install pylsl")
+        print("   Make sure you're in a virtual environment!")
         sys.exit(1)
     
     print("=" * 60)
@@ -173,4 +174,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
