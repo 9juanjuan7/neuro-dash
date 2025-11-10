@@ -3,12 +3,16 @@ EEG Backend - BrainFlow integration and demo mode
 Handles real-time EEG data streaming and beta wave extraction.
 """
 
+from typing import Optional, Tuple
+import csv
 import numpy as np
 from scipy import signal
-from typing import Optional, Tuple
 from collections import deque
 import time
-import csv
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 # Try to import BrainFlow
 try:
@@ -17,6 +21,68 @@ try:
 except ImportError:
     BRAINFLOW_AVAILABLE = False
     print("BrainFlow not available. Using demo mode only.")
+
+
+# -------------------------------
+# EEGNet 4-Channel Model Definition
+# -------------------------------
+
+class EEGNet4Ch(nn.Module):
+    def __init__(self, n_channels=4, n_timepoints=250):
+        super(EEGNet4Ch, self).__init__()
+        self.n_channels = n_channels
+        self.n_timepoints = n_timepoints
+
+        # Temporal Convolution
+        self.conv1 = nn.Conv2d(1, 16, (1, 64), padding=(0, 32), bias=False)
+        self.batchnorm1 = nn.BatchNorm2d(16)
+
+        # Depthwise Convolution
+        self.depthwise = nn.Conv2d(16, 32, (n_channels, 1), groups=16, bias=False)
+        self.batchnorm2 = nn.BatchNorm2d(32)
+        self.pooling2 = nn.AvgPool2d((1, 4))
+        self.dropout2 = nn.Dropout(0.5)
+
+        # Separable Convolution
+        self.separable = nn.Conv2d(32, 32, (1, 16), padding=(0, 8), bias=False)
+        self.batchnorm3 = nn.BatchNorm2d(32)
+        self.pooling3 = nn.AvgPool2d((1, 8))
+        self.dropout3 = nn.Dropout(0.5)
+
+        # Fully Connected (output)
+        # This depends on timepoints and pooling size
+        self.output_size = self._get_output_size()
+        self.fc1 = nn.Linear(self.output_size, 1)
+
+    def _get_output_size(self):
+        # Simulate forward pass to compute flattened size
+        x = torch.zeros(1, 1, self.n_channels, self.n_timepoints)
+        x = self.conv1(x)
+        x = self.batchnorm1(x)
+        x = F.elu(x)
+        x = self.depthwise(x)
+        x = self.batchnorm2(x)
+        x = F.elu(x)
+        x = self.pooling2(x)
+        x = self.dropout2(x)
+        x = self.separable(x)
+        x = self.batchnorm3(x)
+        x = F.elu(x)
+        x = self.pooling3(x)
+        x = self.dropout3(x)
+        return x.view(1, -1).shape[1]
+
+    def forward(self, x):
+        x = F.elu(self.batchnorm1(self.conv1(x)))
+        x = F.elu(self.batchnorm2(self.depthwise(x)))
+        x = self.pooling2(x)
+        x = self.dropout2(x)
+        x = F.elu(self.batchnorm3(self.separable(x)))
+        x = self.pooling3(x)
+        x = self.dropout3(x)
+        x = x.view(x.size(0), -1)
+        x = torch.sigmoid(self.fc1(x))
+        return x
 
 
 class EEGStreamer:
@@ -272,146 +338,111 @@ class EEGStreamer:
                 pass
 
 
+# -------------------------------
+# BetaWaveProcessor with Model
+# -------------------------------
 class BetaWaveProcessor:
-    """
-    Processes EEG data to extract beta wave power (focus/concentration).
-    """
-    
-    def __init__(self, sampling_rate: int = 250, beta_band: Tuple[float, float] = (13.0, 30.0)):
-        """
-        Initialize beta wave processor.
-        
-        Args:
-            sampling_rate: Sampling rate in Hz
-            beta_band: Beta wave frequency range (default 13-30 Hz)
-        """
+    def __init__(self, sampling_rate: int = 250, beta_band: tuple = (13.0, 30.0), model_path="focus_eegnet_4ch.pth"):
         self.sampling_rate = sampling_rate
         self.beta_band = beta_band
-        self.buffer = deque(maxlen=sampling_rate)  # 1 second buffer
+        self.buffer = deque(maxlen=sampling_rate)  # 1-second buffer
         
         # Design beta bandpass filter
         nyquist = sampling_rate / 2.0
-        low = beta_band[0] / nyquist
-        high = beta_band[1] / nyquist
-        low = max(0.01, min(low, 0.99))
-        high = max(0.01, min(high, 0.99))
-        
+        low = max(0.01, min(beta_band[0] / nyquist, 0.99))
+        high = max(0.01, min(beta_band[1] / nyquist, 0.99))
         if low < high:
             self.b, self.a = signal.butter(4, [low, high], btype='band')
         else:
             self.b, self.a = None, None
         
-        # History for tracking
+        # History
         self.beta_history = deque(maxlen=1000)
         self.focus_scores = deque(maxlen=1000)
         self.timestamps = deque(maxlen=1000)
-    
-    def add_data(self, data: np.ndarray):
-        """
-        Add EEG data to buffer.
         
-        Args:
-            data: EEG data array (n_channels, n_samples)
-        """
+        # Load model
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
+        try:
+            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+            self.model.eval()
+            print("✅ EEGNet focus model loaded")
+            self.model_loaded = True
+        except Exception as e:
+            print(f"❌ Failed to load model: {e}")
+            self.model_loaded = False
+
+    # Add EEG data to buffer
+    def add_data(self, data: np.ndarray):
         if data is None or data.size == 0:
             return
-        
-        # Add to buffer (transpose to samples x channels)
         for i in range(data.shape[1]):
             self.buffer.append(data[:, i])
-    
+
+    # Compute beta power (optional, still available)
     def get_beta_power(self) -> float:
-        """
-        Extract beta wave power from buffered data.
-        
-        Returns:
-            Beta wave power (average across channels)
-        """
-        if len(self.buffer) < 50:  # Need minimum samples
+        if len(self.buffer) < 50 or self.b is None or self.a is None:
             return 0.0
-        
-        # Convert buffer to array
-        data = np.array(list(self.buffer)).T  # (n_channels, n_samples)
-        
-        if self.b is None or self.a is None:
-            return 0.0
-        
-        # Compute beta power for each channel
+        data = np.array(list(self.buffer)).T  # n_channels x n_samples
         total_power = 0.0
         for ch in range(data.shape[0]):
             try:
                 filtered = signal.filtfilt(self.b, self.a, data[ch, :].astype(np.float64))
-                power = np.var(filtered)
-                total_power += power
+                total_power += np.var(filtered)
             except:
                 continue
-        
         beta_power = total_power / data.shape[0] if data.shape[0] > 0 else 0.0
-        
-        # Store in history
         self.beta_history.append(beta_power)
         self.timestamps.append(time.time())
-        
         return beta_power
-    
-    def get_focus_score(self, beta_power: float, threshold: float) -> float:
-        """
-        Compute focus score (0.0 to 1.0) based on beta power.
-        Made MUCH harder: requires significantly higher beta power to reach high scores.
+
+    # Predict focus score using the model
+    def get_focus_score(self, beta_power: float = None, threshold: float = None) -> float:
+        if not self.model_loaded:
+            # fallback to old threshold system
+            return self._threshold_focus(beta_power, threshold)
         
-        Args:
-            beta_power: Beta wave power
-            threshold: Threshold for focus detection
-            
-        Returns:
-            Focus score from 0.0 (unfocused) to 1.0 (highly focused)
-        """
-        if threshold <= 0:
+        if len(self.buffer) == 0:
             return 0.0
-        
-        # MUCH harder normalization: requires 3.5x threshold to reach max score
-        # This makes it very hard to achieve high focus scores
-        max_power = threshold * 3.5
-        
-        # Raw score (0 to 1)
-        raw_score = min(beta_power / max_power, 1.0)
-        
-        # Apply STRONG non-linear scaling - makes high scores much harder
-        # Using power of 0.5 (square root) makes it much harder to get high scores
-        # A raw score of 0.5 becomes 0.707, but 0.8 becomes 0.894 (harder to reach)
-        score = raw_score ** 0.5  # Square root curve - much harder for high scores
-        
-        # Additional penalty: even harder to get scores above 0.75
-        if score > 0.75:
-            # Apply additional scaling above 0.75 to make it extremely hard
-            excess = (score - 0.75) / 0.25  # Normalize excess to 0-1
-            # Square the excess, making it much harder
-            scaled_excess = excess ** 2
-            score = 0.75 + (scaled_excess * 0.25)
-        
-        score = max(0.0, min(1.0, score))
+
+        data = np.array(list(self.buffer)).T  # n_channels x n_samples
+        # Ensure correct number of channels
+        if data.shape[0] != 4:
+            return 0.0
+        # Take last 250 samples (or less if buffer is smaller)
+        if data.shape[1] > 250:
+            data = data[:, -250:]
+        data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(self.device)  # 1 x channels x samples
+
+        with torch.no_grad():
+            pred = self.model(data_tensor)
+            score = pred.item()
         
         self.focus_scores.append(score)
         return score
-    
-    def get_history(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Get historical data.
-        
-        Returns:
-            Tuple of (timestamps, beta_power_history, focus_scores)
-        """
+
+    # Old threshold-based fallback
+    def _threshold_focus(self, beta_power: float, threshold: float) -> float:
+        if threshold is None or threshold <= 0 or beta_power is None:
+            return 0.0
+        max_power = threshold * 3.5
+        raw_score = min(beta_power / max_power, 1.0)
+        score = raw_score ** 0.5
+        if score > 0.75:
+            excess = (score - 0.75) / 0.25
+            scaled_excess = excess ** 2
+            score = 0.75 + (scaled_excess * 0.25)
+        score = max(0.0, min(1.0, score))
+        self.focus_scores.append(score)
+        return score
+
+    def get_history(self):
         if len(self.timestamps) == 0:
             return (np.array([]), np.array([]), np.array([]))
-        
-        timestamps = np.array(self.timestamps)
-        beta = np.array(self.beta_history)
-        focus = np.array(self.focus_scores)
-        
-        return (timestamps, beta, focus)
+        return (np.array(self.timestamps), np.array(self.beta_history), np.array(self.focus_scores))
     
     def reset(self):
-        """Reset processor buffers."""
         self.buffer.clear()
         self.beta_history.clear()
         self.focus_scores.clear()

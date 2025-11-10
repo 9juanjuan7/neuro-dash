@@ -3,6 +3,6 @@ numpy>=1.24.0
 scipy>=1.11.0
 plotly>=5.17.0
 pandas>=2.0.0
-
+torch>=2.1.0         # for loading and running EEGNet model
 # Optional: BrainFlow for OpenBCI hardware support
-# brainflow>=5.11.0
+#brainflow>=5.11.0
