@@ -9,10 +9,20 @@ import numpy as np
 from scipy import signal
 from collections import deque
 import time
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+
+# Try to import torch (optional - only needed if model is used)
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import torch.optim as optim
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+    nn = None
+    F = None
+    optim = None
 
 # Try to import BrainFlow
 try:
@@ -34,62 +44,68 @@ except ImportError:
 # EEGNet 4-Channel Model Definition
 # -------------------------------
 
-class EEGNet4Ch(nn.Module):
-    def __init__(self, n_channels=4, n_timepoints=250):
-        super(EEGNet4Ch, self).__init__()
-        self.n_channels = n_channels
-        self.n_timepoints = n_timepoints
+if TORCH_AVAILABLE:
+    class EEGNet4Ch(nn.Module):
+        def __init__(self, n_channels=4, n_timepoints=250):
+            super(EEGNet4Ch, self).__init__()
+            self.n_channels = n_channels
+            self.n_timepoints = n_timepoints
 
-        # Temporal Convolution
-        self.conv1 = nn.Conv2d(1, 16, (1, 64), padding=(0, 32), bias=False)
-        self.batchnorm1 = nn.BatchNorm2d(16)
+            # Temporal Convolution
+            self.conv1 = nn.Conv2d(1, 16, (1, 64), padding=(0, 32), bias=False)
+            self.batchnorm1 = nn.BatchNorm2d(16)
 
-        # Depthwise Convolution
-        self.depthwise = nn.Conv2d(16, 32, (n_channels, 1), groups=16, bias=False)
-        self.batchnorm2 = nn.BatchNorm2d(32)
-        self.pooling2 = nn.AvgPool2d((1, 4))
-        self.dropout2 = nn.Dropout(0.5)
+            # Depthwise Convolution
+            self.depthwise = nn.Conv2d(16, 32, (n_channels, 1), groups=16, bias=False)
+            self.batchnorm2 = nn.BatchNorm2d(32)
+            self.pooling2 = nn.AvgPool2d((1, 4))
+            self.dropout2 = nn.Dropout(0.5)
 
-        # Separable Convolution
-        self.separable = nn.Conv2d(32, 32, (1, 16), padding=(0, 8), bias=False)
-        self.batchnorm3 = nn.BatchNorm2d(32)
-        self.pooling3 = nn.AvgPool2d((1, 8))
-        self.dropout3 = nn.Dropout(0.5)
+            # Separable Convolution
+            self.separable = nn.Conv2d(32, 32, (1, 16), padding=(0, 8), bias=False)
+            self.batchnorm3 = nn.BatchNorm2d(32)
+            self.pooling3 = nn.AvgPool2d((1, 8))
+            self.dropout3 = nn.Dropout(0.5)
 
-        # Fully Connected (output)
-        # This depends on timepoints and pooling size
-        self.output_size = self._get_output_size()
-        self.fc1 = nn.Linear(self.output_size, 1)
+            # Fully Connected (output)
+            # This depends on timepoints and pooling size
+            self.output_size = self._get_output_size()
+            self.fc1 = nn.Linear(self.output_size, 1)
 
-    def _get_output_size(self):
-        # Simulate forward pass to compute flattened size
-        x = torch.zeros(1, 1, self.n_channels, self.n_timepoints)
-        x = self.conv1(x)
-        x = self.batchnorm1(x)
-        x = F.elu(x)
-        x = self.depthwise(x)
-        x = self.batchnorm2(x)
-        x = F.elu(x)
-        x = self.pooling2(x)
-        x = self.dropout2(x)
-        x = self.separable(x)
-        x = self.batchnorm3(x)
-        x = F.elu(x)
-        x = self.pooling3(x)
-        x = self.dropout3(x)
-        return x.view(1, -1).shape[1]
+        def _get_output_size(self):
+            # Simulate forward pass to compute flattened size
+            x = torch.zeros(1, 1, self.n_channels, self.n_timepoints)
+            x = self.conv1(x)
+            x = self.batchnorm1(x)
+            x = F.elu(x)
+            x = self.depthwise(x)
+            x = self.batchnorm2(x)
+            x = F.elu(x)
+            x = self.pooling2(x)
+            x = self.dropout2(x)
+            x = self.separable(x)
+            x = self.batchnorm3(x)
+            x = F.elu(x)
+            x = self.pooling3(x)
+            x = self.dropout3(x)
+            return x.view(1, -1).shape[1]
 
-    def forward(self, x):
-        x = F.elu(self.batchnorm1(self.conv1(x)))
-        x = F.elu(self.batchnorm2(self.depthwise(x)))
-        x = self.pooling2(x)
-        x = self.dropout2(x)
-        x = F.elu(self.batchnorm3(self.separable(x)))
-        x = self.pooling3(x)
-        x = self.dropout3(x)
-        x = x.view(x.size(0), -1)
-        x = torch.sigmoid(self.fc1(x))
-        return x
+        def forward(self, x):
+            x = F.elu(self.batchnorm1(self.conv1(x)))
+            x = F.elu(self.batchnorm2(self.depthwise(x)))
+            x = self.pooling2(x)
+            x = self.dropout2(x)
+            x = F.elu(self.batchnorm3(self.separable(x)))
+            x = self.pooling3(x)
+            x = self.dropout3(x)
+            x = x.view(x.size(0), -1)
+            x = torch.sigmoid(self.fc1(x))
+            return x
+else:
+    # Dummy class if torch not available
+    class EEGNet4Ch:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("torch not available. Install with: pip install torch")
 
 
 class EEGStreamer:
