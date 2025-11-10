@@ -2,16 +2,6 @@ import pygame
 import sys
 import random
 
-import socket
-
-# UDP socket to receive focus from server
-UDP_IP = "127.0.0.1"
-UDP_PORT = 5005
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((UDP_IP, UDP_PORT))
-sock.setblocking(False)  # so it doesn't freeze the game loop
-
 # --------------------------
 # CONFIG
 # --------------------------
@@ -19,9 +9,9 @@ WIDTH, HEIGHT = 900, 500
 FPS = 60
 FINISH_LINE = WIDTH - 120
 
-AI_SPEED = 14
+AI_SPEED = 9
 MIN_SPEED = 2
-MAX_SPEED = 30
+MAX_SPEED = 16
 
 # Desired sprite display size (width, height)
 SPRITE_W, SPRITE_H = 170, 100
@@ -32,14 +22,6 @@ pygame.display.set_caption("Focus Car Racing: Yellow (You) vs White (AI)")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 28, bold=True)
 small_font = pygame.font.SysFont("Arial", 20)
-
-# Load background
-try:
-    grass_img = pygame.image.load("images/grass.jpg").convert()
-    grass_img = pygame.transform.smoothscale(grass_img, (WIDTH, HEIGHT))
-except Exception:
-    grass_img = pygame.Surface((WIDTH, HEIGHT))
-    grass_img.fill((120, 200, 120))  # fallback green
 
 
 WHITE = (255, 255, 255)
@@ -92,73 +74,117 @@ def map_focus_to_speed(focus):
 # DRAW FUNCTIONS
 # --------------------------
 def draw_background():
-    # Draw the grass image instead of solid color
-    screen.blit(grass_img, (0, 0))
+    # --- Upper background ---
+    try:
+        sky_img = pygame.image.load("images/grass.png").convert()
+        sky_img = pygame.transform.smoothscale(sky_img, (WIDTH, 140))  # only above road
+        screen.blit(sky_img, (0, 0))
+    except:
+        pygame.draw.rect(screen, (100, 180, 255), (0, 0, WIDTH, 140))  # fallback sky
 
-    # Road
+    # --- Road ---
     pygame.draw.rect(screen, GREY, (0, 140, WIDTH, 220))
-    
-    # Road dashed line
     for i in range(0, WIDTH, 40):
         pygame.draw.rect(screen, WHITE, (i, 245, 20, 10))
-    
-    # Finish line
     pygame.draw.line(screen, RED, (FINISH_LINE, 120), (FINISH_LINE, 390), 8)
+
+    # --- Lower background ---
+    try:
+        dirt_img = pygame.image.load("images/dirt.png").convert()
+        dirt_img = pygame.transform.smoothscale(dirt_img, (WIDTH, HEIGHT-360))
+        screen.blit(dirt_img, (0, 360))
+    except:
+        pygame.draw.rect(screen, (150, 120, 80), (0, 360, WIDTH, HEIGHT-360))
 
 
 def draw_ui(focus, player, ai):
-    # Focus bar background and outline
-    bar_x, bar_y, bar_w, bar_h = 50, HEIGHT - 60, 200, 20
-    pygame.draw.rect(screen, BLACK, (bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4), 3, border_radius=4)
-    pygame.draw.rect(screen, GREY, (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+    # --- Focus bar ---
+    bar_x, bar_y, bar_w, bar_h = 50, HEIGHT - 60, 300, 30
+    pygame.draw.rect(screen, BLACK, (bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4), 3, border_radius=6)
+    pygame.draw.rect(screen, GREY, (bar_x, bar_y, bar_w, bar_h), border_radius=6)
 
-    # Determine color based on focus range
+    # Color mapping for focus
     if focus < 25:
-        color = (230, 50, 50)       # red
+        color = (230, 50, 50)
     elif focus < 50:
-        color = (255, 150, 0)       # orange
+        color = (255, 150, 0)
     elif focus < 75:
-        color = (255, 230, 0)       # yellow
+        color = (255, 230, 0)
     else:
-        color = (0, 200, 0)         # green
+        color = (0, 200, 0)
 
-    # Fill proportionally to focus %
     filled_w = int((focus / 100) * bar_w)
-    pygame.draw.rect(screen, color, (bar_x, bar_y, filled_w, bar_h), border_radius=4)
+    pygame.draw.rect(screen, color, (bar_x, bar_y, filled_w, bar_h), border_radius=6)
 
-    # Label text
-    text = font.render(f"Focus: {focus:.0f}%", True, WHITE)
-    screen.blit(text, (bar_x + bar_w + 20, bar_y - 5))
+    # --- Label inside bar ---
+    label_text = font.render("Focus", True, WHITE)
+    screen.blit(label_text, (bar_x + 8, bar_y - 1))  # slightly inside left side
+    value_text = font.render(f"{focus:.0f}%", True, WHITE)
+    value_rect = value_text.get_rect(right=bar_x + bar_w - 8, centery=bar_y + bar_h // 2)
+    screen.blit(value_text, value_rect)
 
-    # Compute player & AI distances
+    # --- Motivational message ABOVE the bar (with more spacing) ---
     total_path = max(FINISH_LINE - 50 - player.img.get_width(), 1)
     player_dist = min(max((player.x / total_path) * 100, 0), 100)
     ai_dist = min(max((ai.x / total_path) * 100, 0), 100)
+    diff = player_dist - ai_dist
 
-    return player_dist, ai_dist
-
-
-def draw_comment(diff):
-    """Display motivational comment based on relative progress."""
     if diff < -50:
-        msg = "You’re way behind! Stay focused!"
+        msg = "You're way behind! Stay focused!"
         color = RED
     elif diff < -25:
         msg = "Keep it up! Focus more!"
         color = (255, 120, 0)
     elif diff < 25:
-        msg = "You’re on the same track! Push harder!"
+        msg = "On the same track! Push harder!"
         color = (251, 255, 133)
     elif diff < 50:
-        msg = "You’re leading! Hang in there!"
+        msg = "You're leading! Hang in there!"
         color = (201,255,244)
     else:
-        msg = "You’re way ahead! Keep it that way!"
+        msg = "Way ahead! Keep it that way!"
         color = (160, 247, 148)
 
+    # Give it extra spacing above the bar
     text = font.render(msg, True, color)
-    rect = text.get_rect(center=(WIDTH//2, HEIGHT - 100))
+    rect = text.get_rect(topleft=(bar_x, bar_y - 55))  # more gap (used to be -35)
     screen.blit(text, rect)
+
+    # --- Bottom-right status panel ---
+    panel_w, panel_h = 200, 120
+    panel_x, panel_y = WIDTH - panel_w - 10, HEIGHT - panel_h - 10
+
+    # Shadow
+    shadow_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    pygame.draw.rect(shadow_surf, (50, 50, 50, 100), (0, 0, panel_w, panel_h), border_radius=12)
+    screen.blit(shadow_surf, (panel_x + 4, panel_y + 4))
+
+    # Panel background
+    pygame.draw.rect(screen, (245, 245, 250), (panel_x, panel_y, panel_w, panel_h), border_radius=12)
+    pygame.draw.rect(screen, (180, 180, 180), (panel_x, panel_y, panel_w, panel_h), 2, border_radius=12)
+
+    def safe_scale(img, size):
+        try:
+            return pygame.transform.smoothscale(img, size)
+        except Exception:
+            surf = pygame.Surface(size)
+            surf.fill((200, 200, 200))
+            return surf
+
+    def draw_avatar(img, label, distance, y):
+        center_x = panel_x + 40
+        pygame.draw.circle(screen, (230, 230, 255), (center_x, y), 22)
+        avatar = safe_scale(img, (50, 30))
+        screen.blit(avatar, (center_x - 25, y - 15))
+        text = small_font.render(label, True, BLACK)
+        screen.blit(text, (center_x + 45, y - 18))
+        dist_text = small_font.render(f"{distance:.1f}%", True, BLACK)
+        screen.blit(dist_text, (center_x + 45, y + 6))
+
+    draw_avatar(player.img, "You", 100 - player_dist, panel_y + 35)
+    draw_avatar(ai.img, "AI", 100 - ai_dist, panel_y + 80)
+
+    return player_dist, ai_dist
 
 
 # --- PARTICLE EFFECT HELPERS ---
@@ -296,48 +322,6 @@ def show_end_screen(winner):
                     main()  # restart game
                     return
 
-def draw_status_panel(player, ai):
-    panel_w, panel_h = 200, 120
-    panel_x, panel_y = 10, 10
-
-    # Safe guard for missing images
-    def safe_scale(img, size):
-        try:
-            return pygame.transform.smoothscale(img, size)
-        except Exception:
-            surf = pygame.Surface(size)
-            surf.fill((200, 200, 200))
-            return surf
-
-    # Panel background
-    pygame.draw.rect(screen, (245, 245, 250), (panel_x, panel_y, panel_w, panel_h), border_radius=12)
-    pygame.draw.rect(screen, (180, 180, 180), (panel_x, panel_y, panel_w, panel_h), 2, border_radius=12)
-
-    # Compute distances (% progress)
-    total_path = max(FINISH_LINE - 50 - player.img.get_width(), 1)
-    player_dist = min(max((player.x / total_path) * 100, 0), 100)
-    ai_dist = min(max((ai.x / total_path) * 100, 0), 100)
-
-    def draw_avatar(img, label, distance, y):
-        # Circle background
-        center_x = panel_x + 40
-        pygame.draw.circle(screen, (230, 230, 255), (center_x, y), 22)
-
-        # Avatar image
-        avatar = safe_scale(img, (50, 30))
-        screen.blit(avatar, (center_x - 25, y - 15))
-
-        # Labels
-        text = font.render(label, True, BLACK)
-        screen.blit(text, (center_x + 45, y - 18))
-
-        # Smaller distance text
-        dist_text = small_font.render(f"{distance:.1f}%", True, BLACK)
-        screen.blit(dist_text, (center_x + 45, y + 6))
-
-    # Draw each entry
-    draw_avatar(player.img, "You", 100 - player_dist, panel_y + 30)
-    draw_avatar(ai.img, "AI", 100 - ai_dist, panel_y + 80)
 
 
 # --------------------------
@@ -346,59 +330,50 @@ def draw_status_panel(player, ai):
 def main():
     player = Car(player_img, 150)
     ai = Car(ai_img, 270)
-    focus = 50
     running = True
     winner = None
     smoke_particles = []
+    focus_value = 50  # initial focus
 
     while running:
         dt = clock.tick(FPS)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
 
-        # Default if no new data arrives
-        focus = 50  
+        # --- Optional manual focus adjustment ---
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_UP]:
+            focus_value = min(focus_value + 1, 100)
+        elif keys[pygame.K_DOWN]:
+            focus_value = max(focus_value - 1, 0)
+        else:
+            focus_value = max(focus_value - 0.05, 0)  # slowly decay
 
-        try:
-            data, _ = sock.recvfrom(1024)
-            focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
-        except BlockingIOError:
-            pass  # no new data this frame
-
-
-        player.speed = map_focus_to_speed(focus)
+        # --- Update car speeds ---
+        player.speed = map_focus_to_speed(focus_value)
         ai.speed = AI_SPEED
 
-        if focus >= 75:
+        # Smoke effect if focus high
+        if focus_value >= 75:
             smoke_particles.extend(create_smoke(player.x, player.y + player.img.get_height() // 2))
+
         player.update()
         ai.update()
-        
 
         # --- DRAW SECTION ---
         draw_background()
         player.draw()
         ai.draw()
 
-        player_dist, ai_dist = draw_ui(focus, player, ai)
-        diff = player_dist - ai_dist
-        draw_comment(diff)
-
-        draw_status_panel(player, ai)
+        # draw_ui now also includes the bottom-left distance panel
+        player_dist, ai_dist = draw_ui(focus_value, player, ai)
+        animate_smoke(smoke_particles)
 
         # --- Check winner ---
         if (player.finished or ai.finished) and winner is None:
             winner = "player" if player.finished else "ai"
             draw_winner(winner)
-            # Instead of running = False → keep running and show end banner
             show_end_screen(winner)
 
-        animate_smoke(smoke_particles)
         pygame.display.flip()
 
-    pygame.time.wait(400)
-    pygame.quit()
 if __name__ == "__main__":
     main()
