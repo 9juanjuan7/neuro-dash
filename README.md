@@ -41,7 +41,7 @@ NeuroDash helps hospitals capture pediatric measurements faster and calmer by tu
 - Pygame — Doctor-facing dashboard for monitoring and control  
 
 **Backend**
-- Python + Socket Communication — Real-time data streaming between EEG, dashboard, and game  
+- Python + LSL + UDP — LSL streams EEG data from OpenBCI GUI, UDP sockets transmit processed focus scores to game and dashboard
 - NumPy + SciPy — Signal processing and focus computation  
 - Mock EEG Generator — Enables testing without hardware  
 
