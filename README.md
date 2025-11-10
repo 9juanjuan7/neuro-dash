@@ -68,7 +68,7 @@ python focus_server.py --board-type Ganglion --serial-port COM3
 ```
 ### 2. Launch the Game (Player View)
 ```bash
-python  focu_game.py
+bash start_game.sh
 ```
 ### 3. Launch the Dashboard (Clinician View)
 ```bash
@@ -83,9 +83,9 @@ python dashboard_pygame.py --pi-ip <pi-ip-address>
 - Dam Hanh Nguyen Mong
 
 ## Project Links
-- Devpost
-- Slide Deck
-- [Demo Video] (https://www.youtube.com/watch?v=61n5GsGkd9s)
+- [Devpost](https://devpost.com/software/neurodrive-awgdio)
+- [Slide Deck](https://docs.google.com/presentation/d/1OVRy0oJ0sTellEWwlVn00hihXx4xbdlLNEIf56y-2qI/edit?slide=id.g3a1a60e7b61_0_79#slide=id.g3a1a60e7b61_0_79)
+- [Demo Video](https://www.youtube.com/watch?v=61n5GsGkd9s)
 
 ## References
 - Lawhern VJ, Solon AJ, Waytowich NR, Gordon SM, Hung CP, Lance BJ. EEGNet: a compact convolutional neural network for EEG-based brain-computer interfaces. J Neural Eng. 2018 Oct;15(5):056013. doi: 10.1088/1741-2552/aace8c. Epub 2018 Jun 22. PMID: 29932424. [EEGNet](https://github.com/aliasvishnu/EEGNet)
