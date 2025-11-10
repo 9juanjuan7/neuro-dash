@@ -48,7 +48,8 @@ else:
 # --------------------------
 # CONFIG
 # --------------------------
-WIDTH, HEIGHT = 1200, 800
+INITIAL_WIDTH, INITIAL_HEIGHT = 1200, 800
+MIN_WIDTH, MIN_HEIGHT = 800, 600
 FPS = 60
 
 # Colors (same as game)
@@ -63,9 +64,13 @@ ORANGE = (255, 120, 0)
 
 # Initialize Pygame
 pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Pediatric Focus-Drive • Doctor Dashboard")
+screen = pygame.display.set_mode((INITIAL_WIDTH, INITIAL_HEIGHT), pygame.RESIZABLE)
+pygame.display.set_caption("Pediatric Focus-Drive • Doctor Dashboard (F11: Fullscreen, ESC: Exit)")
 clock = pygame.time.Clock()
+
+# Track window size and fullscreen state
+WIDTH, HEIGHT = INITIAL_WIDTH, INITIAL_HEIGHT
+fullscreen = False
 
 # Fonts
 font = pygame.font.Font(None, 48)
@@ -320,6 +325,8 @@ def draw_control_panel(x, y, width, height, pi_ip):
 # MAIN LOOP
 # --------------------------
 def main():
+    global WIDTH, HEIGHT, fullscreen, screen
+    
     focus = 50
     smoothed_focus = 50
     smoothing_alpha = 0.15  # Same as game
@@ -337,6 +344,27 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                # Handle window resize
+                if not fullscreen:
+                    WIDTH, HEIGHT = max(MIN_WIDTH, event.w), max(MIN_HEIGHT, event.h)
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F11:
+                    # Toggle fullscreen
+                    fullscreen = not fullscreen
+                    if fullscreen:
+                        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                        WIDTH, HEIGHT = screen.get_size()
+                    else:
+                        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+                elif event.key == pygame.K_ESCAPE:
+                    if fullscreen:
+                        # Exit fullscreen on ESC
+                        fullscreen = False
+                        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+                    else:
+                        running = False
         
         # --- Get focus from UDP socket (same logic as game) ---
         raw_focus = last_focus_value
@@ -434,34 +462,34 @@ def main():
         draw_history_chart(50, 550, WIDTH - 100, chart_height)
         
         # Footer
-        footer_text = small_font.render("Press ESC or close window to exit", True, GREY)
+        footer_msg = "F11: Fullscreen | ESC: Exit" if not fullscreen else "F11: Windowed | ESC: Exit Fullscreen"
+        footer_text = small_font.render(footer_msg, True, GREY)
         footer_rect = footer_text.get_rect(center=(WIDTH // 2, HEIGHT - 20))
         screen.blit(footer_text, footer_rect)
         
-        # Handle button clicks (after drawing to get button rects)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left mouse button
-                    if play_rect and play_rect.collidepoint(event.pos):
-                        # Send restart command to game
-                        if command_sock and args.pi_ip:
-                            try:
-                                command_sock.sendto(b"restart", (args.pi_ip, GAME_COMMAND_PORT))
-                                print(f"[Dashboard] Sent 'restart' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
-                            except Exception as e:
-                                print(f"[Dashboard] Error sending restart command: {e}")
-                    elif quit_rect and quit_rect.collidepoint(event.pos):
-                        # Send quit command to game
-                        if command_sock and args.pi_ip:
-                            try:
-                                command_sock.sendto(b"quit", (args.pi_ip, GAME_COMMAND_PORT))
-                                print(f"[Dashboard] Sent 'quit' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
-                            except Exception as e:
-                                print(f"[Dashboard] Error sending quit command: {e}")
-        
         pygame.display.flip()
+        
+        # Handle button clicks (after drawing to get button rects, but before next frame)
+        # We need to process mouse events separately since we need button rects
+        mouse_events = [e for e in pygame.event.get() if e.type == pygame.MOUSEBUTTONDOWN]
+        for event in mouse_events:
+            if event.button == 1:  # Left mouse button
+                if play_rect and play_rect.collidepoint(event.pos):
+                    # Send restart command to game
+                    if command_sock and args.pi_ip:
+                        try:
+                            command_sock.sendto(b"restart", (args.pi_ip, GAME_COMMAND_PORT))
+                            print(f"[Dashboard] Sent 'restart' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
+                        except Exception as e:
+                            print(f"[Dashboard] Error sending restart command: {e}")
+                elif quit_rect and quit_rect.collidepoint(event.pos):
+                    # Send quit command to game
+                    if command_sock and args.pi_ip:
+                        try:
+                            command_sock.sendto(b"quit", (args.pi_ip, GAME_COMMAND_PORT))
+                            print(f"[Dashboard] Sent 'quit' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
+                        except Exception as e:
+                            print(f"[Dashboard] Error sending quit command: {e}")
     
     pygame.quit()
     sys.exit()
