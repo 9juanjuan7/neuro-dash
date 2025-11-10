@@ -48,8 +48,8 @@ else:
 # --------------------------
 # CONFIG
 # --------------------------
-INITIAL_WIDTH, INITIAL_HEIGHT = 1200, 800
-MIN_WIDTH, MIN_HEIGHT = 800, 600
+INITIAL_WIDTH, INITIAL_HEIGHT = 960, 640  # 20% smaller (was 1200x800)
+MIN_WIDTH, MIN_HEIGHT = 640, 480
 FPS = 60
 
 # Colors (same as game)
@@ -261,17 +261,23 @@ def draw_info_panel(x, y, width, height):
         max_val_text = font.render(f"{max_val:.1f}%", True, GREEN)
         screen.blit(max_val_text, (x + 150, stats_y + line_height * 2))
         
-        # Min
-        min_label = small_font.render("Minimum:", True, BLACK)
-        screen.blit(min_label, (x + 20, stats_y + line_height * 3))
-        min_val_text = font.render(f"{min_val:.1f}%", True, RED)
-        screen.blit(min_val_text, (x + 150, stats_y + line_height * 3))
+        # Min - check if it fits in panel
+        min_y = stats_y + line_height * 3
+        min_text_height = small_font.get_height()
+        if min_y + min_text_height + 5 <= y + height - 20:  # Make sure it fits with padding
+            min_label = small_font.render("Minimum:", True, BLACK)
+            screen.blit(min_label, (x + 20, min_y))
+            min_val_text = font.render(f"{min_val:.1f}%", True, RED)
+            screen.blit(min_val_text, (x + 150, min_y))
         
-        # Data points
-        count_label = small_font.render("Data Points:", True, BLACK)
-        screen.blit(count_label, (x + 20, stats_y + line_height * 4))
-        count_val = font.render(f"{len(focus_history)}", True, BLUE)
-        screen.blit(count_val, (x + 150, stats_y + line_height * 4))
+        # Data points - check if it fits in panel
+        count_y = stats_y + line_height * 4
+        count_text_height = small_font.get_height()
+        if count_y + count_text_height + 5 <= y + height - 20:  # Make sure it fits with padding
+            count_label = small_font.render("Data Points:", True, BLACK)
+            screen.blit(count_label, (x + 20, count_y))
+            count_val = font.render(f"{len(focus_history)}", True, BLUE)
+            screen.blit(count_val, (x + 150, count_y))
 
 def draw_control_panel(x, y, width, height, pi_ip):
     """Draw game control panel with Play Again and Quit buttons"""
@@ -446,7 +452,7 @@ def main():
         
         # Info panel (right top)
         info_panel_width = 350
-        info_panel_height = 250
+        info_panel_height = 280  # Increased from 250 to fit Minimum and Data Points
         info_x = WIDTH - info_panel_width - 50
         draw_info_panel(info_x, 220, info_panel_width, info_panel_height)
         
