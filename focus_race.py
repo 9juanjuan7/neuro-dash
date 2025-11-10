@@ -325,32 +325,81 @@ def draw_winner(winner):
         clock.tick(60)
 
 def show_end_screen(winner):
-    """Display final winner result and wait for user input"""
-    screen.fill(BG)
-    msg = "!!YOU WIN!!" if winner == "player" else "!!YOU LOST!!"
-    color = GREEN if winner == "player" else RED
-    text = font.render(msg, True, color)
-    rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-    screen.blit(text, rect)
-
-    sub = font.render("Press [R] to restart or [Q] to quit", True, BLACK)
-    sub_rect = sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60))
-    screen.blit(sub, sub_rect)
-
-    pygame.display.flip()
-
+    """Display final winner result and wait for user input (keyboard or touch)"""
+    # Button dimensions
+    button_width = 200
+    button_height = 60
+    button_spacing = 30
+    button_y = HEIGHT // 2 + 80
+    
+    # Create button rectangles
+    play_again_rect = pygame.Rect(
+        WIDTH // 2 - button_width - button_spacing // 2,
+        button_y,
+        button_width,
+        button_height
+    )
+    quit_rect = pygame.Rect(
+        WIDTH // 2 + button_spacing // 2,
+        button_y,
+        button_width,
+        button_height
+    )
+    
     waiting = True
     while waiting:
+        screen.fill(BG)
+        
+        # Draw winner message
+        msg = "!!YOU WIN!!" if winner == "player" else "!!YOU LOST!!"
+        color = GREEN if winner == "player" else RED
+        text = font.render(msg, True, color)
+        rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40))
+        screen.blit(text, rect)
+        
+        # Draw buttons
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # Play Again button
+        play_hover = play_again_rect.collidepoint(mouse_pos)
+        play_color = (50, 200, 50) if play_hover else (100, 150, 100)
+        pygame.draw.rect(screen, play_color, play_again_rect)
+        pygame.draw.rect(screen, BLACK, play_again_rect, 3)  # Border
+        play_text = font.render("Play Again", True, WHITE)
+        play_text_rect = play_text.get_rect(center=play_again_rect.center)
+        screen.blit(play_text, play_text_rect)
+        
+        # Quit button
+        quit_hover = quit_rect.collidepoint(mouse_pos)
+        quit_color = (200, 50, 50) if quit_hover else (150, 100, 100)
+        pygame.draw.rect(screen, quit_color, quit_rect)
+        pygame.draw.rect(screen, BLACK, quit_rect, 3)  # Border
+        quit_text = font.render("Quit", True, WHITE)
+        quit_text_rect = quit_text.get_rect(center=quit_rect.center)
+        screen.blit(quit_text, quit_text_rect)
+        
+        pygame.display.flip()
+        clock.tick(60)
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
+                # Still support keyboard for convenience
                 if event.key == pygame.K_q:
                     pygame.quit()
                     sys.exit()
                 elif event.key == pygame.K_r:
                     waiting = False  # Exit end screen and restart game
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # Handle touch/mouse clicks
+                if event.button == 1:  # Left mouse button or touch
+                    if play_again_rect.collidepoint(event.pos):
+                        waiting = False  # Exit end screen and restart game
+                    elif quit_rect.collidepoint(event.pos):
+                        pygame.quit()
+                        sys.exit()
 
 
 # --------------------------
