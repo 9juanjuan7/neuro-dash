@@ -316,6 +316,8 @@ class BetaWaveProcessor:
         self.smoothing_alpha = 0.25  # 0.0 = no smoothing (instant), 1.0 = no change (fully smoothed)
         # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
         # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
+        # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
+        # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
         
         # Spike detection - track recent values to detect sudden jumps
         self.recent_scores = deque(maxlen=10)  # Track last 10 scores
@@ -355,51 +357,40 @@ class BetaWaveProcessor:
         return self._threshold_focus(beta_power, threshold)
 
     # Threshold-based focus calculation
+    # Copied from main branch - this is the correct, working calculation
     def _threshold_focus(self, beta_power: float, threshold: float) -> float:
         if threshold is None or threshold <= 0 or beta_power is None:
             return 0.0
         
-        # Detect artifacts (extremely high beta power values indicate movement/noise)
-        # Normal beta power should be in the range of 10-200 for good signal
-        # Values above 1000 are likely artifacts
-        ARTIFACT_THRESHOLD = 1000.0
-        if beta_power > ARTIFACT_THRESHOLD:
-            # For artifacts, show a visible spike but don't max out
-            # Use less smoothing for artifacts so they're more noticeable
-            # Scale artifact score: 1000 = 0.5, 10000+ = 0.9
-            artifact_ratio = min(1.0, (beta_power - ARTIFACT_THRESHOLD) / (ARTIFACT_THRESHOLD * 9))
-            artifact_score = 0.5 + artifact_ratio * 0.4  # Range: 0.5 to 0.9
-            
-            # Apply less smoothing for artifacts so they're visible
-            if self.smoothed_focus is None:
-                self.smoothed_focus = artifact_score
-            else:
-                # Use higher alpha (less smoothing) for artifacts to make them more visible
-                artifact_alpha = min(0.5, self.smoothing_alpha * 2.0)
-                self.smoothed_focus = artifact_alpha * artifact_score + (1 - artifact_alpha) * self.smoothed_focus
-            
-            self.recent_scores.append(artifact_score)
-            return self.smoothed_focus
-        
-        # Use absolute power approach for normal values
-        # Adjust max_power based on threshold - higher threshold = less sensitive
-        # For threshold=70, we want max_power around 200-300 for normal operation
-        max_power = threshold * 3.0  # Changed from 10.0 to 3.0 for better scaling
+        # Use absolute power approach (more stable, no baseline drift issues)
+        max_power = threshold * 10.0  # Increased from 8.0 to 10.0 - much less sensitive
         raw_score = min(beta_power / max_power, 1.0)
         
-        # Apply a power curve to make it more responsive to actual focus changes
-        # Higher exponent = more linear = more responsive
-        score = raw_score ** 0.6  # Changed from 0.4 to 0.6 for better responsiveness
+        # Apply a much steeper curve to make it less sensitive
+        # Lower exponent = steeper curve = harder to reach high focus
+        score = raw_score ** 0.4  # Changed from 0.5 to 0.4 - even less sensitive
+        
+        # Map the score to allow full range 0-100%, with clearer response to changes
+        # Make it easier to see the relationship between focusing and speed
+        if raw_score > 0.7:
+            # For high values, allow reaching 100% with a steeper curve
+            excess = (raw_score - 0.7) / 0.3  # Normalize 0.7-1.0 to 0-1
+            # Apply a steeper curve to make it harder to reach 100%
+            curved_excess = excess ** 1.5
+            score = 0.7 ** 0.4 + curved_excess * (1.0 - 0.7 ** 0.4)
+        else:
+            # For lower values, use the power curve
+            score = raw_score ** 0.4
         
         score = max(0.0, min(1.0, score))
         
-        # Spike detection - prevent sudden jumps (only for non-artifact values)
+        # Spike detection - prevent sudden jumps
         if len(self.recent_scores) > 0:
             recent_avg = np.mean(list(self.recent_scores))
-            # If current score is more than 0.3 above recent average, it's likely a spike
-            if score > recent_avg + 0.3:
+            # If current score is more than 0.4 above recent average, it's likely a spike
+            if score > recent_avg + 0.4:
                 # Cap the increase to prevent spikes
-                score = recent_avg + 0.15  # Limit increase to 0.15 per step
+                score = recent_avg + 0.2  # Limit increase to 0.2 per step
                 score = min(score, 1.0)
         
         self.recent_scores.append(score)
