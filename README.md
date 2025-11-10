@@ -21,7 +21,7 @@ python focus_server.py --board-type Ganglion --serial-port COM3
 ```
 Run the game:
 ```bash
-focus.py
+python focus.py
 ```
 
 ### Demo Mode
