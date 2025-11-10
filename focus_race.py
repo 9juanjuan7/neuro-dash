@@ -17,11 +17,18 @@ import socket
 # Bind to 0.0.0.0 to receive from external sources (like laptop forwarder over Tailscale)
 UDP_IP = "0.0.0.0"  # Changed from 127.0.0.1 to accept external connections
 UDP_PORT = 5005
+COMMAND_PORT = 5007  # Port for receiving commands from dashboard
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.setblocking(False)  # so it doesn't freeze the game loop
 print(f"[Game] UDP socket bound to {UDP_IP}:{UDP_PORT} - waiting for data...")
+
+# Command socket for receiving commands from dashboard
+command_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+command_sock.bind((UDP_IP, COMMAND_PORT))
+command_sock.setblocking(False)
+print(f"[Game] Command socket bound to {UDP_IP}:{COMMAND_PORT} - waiting for dashboard commands...")
 
 # --------------------------
 # CONFIG
@@ -325,27 +332,7 @@ def draw_winner(winner):
         clock.tick(60)
 
 def show_end_screen(winner):
-    """Display final winner result and wait for user input (keyboard or touch)"""
-    # Button dimensions
-    button_width = 200
-    button_height = 60
-    button_spacing = 30
-    button_y = HEIGHT // 2 + 80
-    
-    # Create button rectangles
-    play_again_rect = pygame.Rect(
-        WIDTH // 2 - button_width - button_spacing // 2,
-        button_y,
-        button_width,
-        button_height
-    )
-    quit_rect = pygame.Rect(
-        WIDTH // 2 + button_spacing // 2,
-        button_y,
-        button_width,
-        button_height
-    )
-    
+    """Display final winner result and wait for dashboard command or keyboard input"""
     waiting = True
     while waiting:
         screen.fill(BG)
@@ -357,49 +344,44 @@ def show_end_screen(winner):
         rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40))
         screen.blit(text, rect)
         
-        # Draw buttons
-        mouse_pos = pygame.mouse.get_pos()
+        # Show waiting message
+        waiting_msg = small_font.render("Waiting for doctor to restart or quit...", True, GREY)
+        waiting_rect = waiting_msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 40))
+        screen.blit(waiting_msg, waiting_rect)
         
-        # Play Again button
-        play_hover = play_again_rect.collidepoint(mouse_pos)
-        play_color = (50, 200, 50) if play_hover else (100, 150, 100)
-        pygame.draw.rect(screen, play_color, play_again_rect)
-        pygame.draw.rect(screen, BLACK, play_again_rect, 3)  # Border
-        play_text = font.render("Play Again", True, WHITE)
-        play_text_rect = play_text.get_rect(center=play_again_rect.center)
-        screen.blit(play_text, play_text_rect)
-        
-        # Quit button
-        quit_hover = quit_rect.collidepoint(mouse_pos)
-        quit_color = (200, 50, 50) if quit_hover else (150, 100, 100)
-        pygame.draw.rect(screen, quit_color, quit_rect)
-        pygame.draw.rect(screen, BLACK, quit_rect, 3)  # Border
-        quit_text = font.render("Quit", True, WHITE)
-        quit_text_rect = quit_text.get_rect(center=quit_rect.center)
-        screen.blit(quit_text, quit_text_rect)
+        # Show keyboard shortcut hint
+        hint_msg = small_font.render("(Press [R] to restart or [Q] to quit)", True, GREY)
+        hint_rect = hint_msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 70))
+        screen.blit(hint_msg, hint_rect)
         
         pygame.display.flip()
         clock.tick(60)
+        
+        # Check for commands from dashboard
+        try:
+            data, addr = command_sock.recvfrom(1024)
+            command = data.decode().strip().lower()
+            if command == "restart":
+                waiting = False  # Exit end screen and restart game
+            elif command == "quit":
+                pygame.quit()
+                sys.exit()
+        except BlockingIOError:
+            pass  # No command received
+        except Exception:
+            pass  # Ignore errors
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
-                # Still support keyboard for convenience
+                # Still support keyboard for convenience/fallback
                 if event.key == pygame.K_q:
                     pygame.quit()
                     sys.exit()
                 elif event.key == pygame.K_r:
                     waiting = False  # Exit end screen and restart game
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Handle touch/mouse clicks
-                if event.button == 1:  # Left mouse button or touch
-                    if play_again_rect.collidepoint(event.pos):
-                        waiting = False  # Exit end screen and restart game
-                    elif quit_rect.collidepoint(event.pos):
-                        pygame.quit()
-                        sys.exit()
 
 
 # --------------------------

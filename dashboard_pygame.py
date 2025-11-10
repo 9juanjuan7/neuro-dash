@@ -15,18 +15,35 @@ except ModuleNotFoundError:
 
 import sys
 import socket
+import argparse
 from collections import deque
 from datetime import datetime
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Doctor Dashboard for Focus-Drive Game')
+parser.add_argument('--pi-ip', type=str, default=None,
+                    help='Raspberry Pi IP address (e.g., 100.72.174.84) for sending game commands. If not provided, buttons will be disabled.')
+args = parser.parse_args()
 
 # UDP socket to receive focus from forwarder/subscriber
 # Bind to 0.0.0.0 to accept from localhost (from forwarder) or external sources
 UDP_IP = "0.0.0.0"
 UDP_PORT = 5006  # Dashboard port
+GAME_COMMAND_PORT = 5007  # Port for sending commands to game on Pi
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.setblocking(False)
 print(f"[Dashboard] UDP socket bound to {UDP_IP}:{UDP_PORT} - waiting for data...")
+
+# Command socket for sending commands to game
+command_sock = None
+if args.pi_ip:
+    command_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print(f"[Dashboard] Command socket ready - will send commands to {args.pi_ip}:{GAME_COMMAND_PORT}")
+else:
+    print(f"[Dashboard] Warning: No Pi IP provided. Game control buttons will be disabled.")
+    print(f"   Run with --pi-ip <pi-ip-address> to enable game control")
 
 # --------------------------
 # CONFIG
@@ -251,6 +268,54 @@ def draw_info_panel(x, y, width, height):
         count_val = font.render(f"{len(focus_history)}", True, BLUE)
         screen.blit(count_val, (x + 150, stats_y + line_height * 4))
 
+def draw_control_panel(x, y, width, height, pi_ip):
+    """Draw game control panel with Play Again and Quit buttons"""
+    panel_bg = (240, 250, 255)
+    pygame.draw.rect(screen, panel_bg, (x, y, width, height), border_radius=10)
+    pygame.draw.rect(screen, BLACK, (x, y, width, height), 2, border_radius=10)
+    
+    # Title
+    title = title_font.render("Game Control", True, BLACK)
+    screen.blit(title, (x + 20, y + 20))
+    
+    if not pi_ip:
+        # Show warning if no Pi IP
+        warning = small_font.render("No Pi IP configured", True, RED)
+        screen.blit(warning, (x + 20, y + 100))
+        hint = small_font.render("Run with --pi-ip", True, GREY)
+        screen.blit(hint, (x + 20, y + 130))
+        return None, None
+    
+    # Button dimensions
+    button_width = width - 40
+    button_height = 60
+    button_spacing = 20
+    
+    # Play Again button
+    play_y = y + 100
+    play_again_rect = pygame.Rect(x + 20, play_y, button_width, button_height)
+    mouse_pos = pygame.mouse.get_pos()
+    play_hover = play_again_rect.collidepoint(mouse_pos)
+    play_color = (50, 200, 50) if play_hover else (100, 150, 100)
+    pygame.draw.rect(screen, play_color, play_again_rect, border_radius=8)
+    pygame.draw.rect(screen, BLACK, play_again_rect, 3, border_radius=8)
+    play_text = font.render("Play Again", True, WHITE)
+    play_text_rect = play_text.get_rect(center=play_again_rect.center)
+    screen.blit(play_text, play_text_rect)
+    
+    # Quit button
+    quit_y = play_y + button_height + button_spacing
+    quit_rect = pygame.Rect(x + 20, quit_y, button_width, button_height)
+    quit_hover = quit_rect.collidepoint(mouse_pos)
+    quit_color = (200, 50, 50) if quit_hover else (150, 100, 100)
+    pygame.draw.rect(screen, quit_color, quit_rect, border_radius=8)
+    pygame.draw.rect(screen, BLACK, quit_rect, 3, border_radius=8)
+    quit_text = font.render("Quit Game", True, WHITE)
+    quit_text_rect = quit_text.get_rect(center=quit_rect.center)
+    screen.blit(quit_text, quit_text_rect)
+    
+    return play_again_rect, quit_rect
+
 # --------------------------
 # MAIN LOOP
 # --------------------------
@@ -351,11 +416,18 @@ def main():
         status_panel_height = 300
         draw_status_panel(focus, ready_flag, connection_status, 50, 220, status_panel_width, status_panel_height)
         
-        # Info panel (right)
+        # Info panel (right top)
         info_panel_width = 350
-        info_panel_height = 300
+        info_panel_height = 250
         info_x = WIDTH - info_panel_width - 50
         draw_info_panel(info_x, 220, info_panel_width, info_panel_height)
+        
+        # Control panel (right bottom) - draw and get button rects
+        control_panel_width = 350
+        control_panel_height = 200
+        control_x = WIDTH - control_panel_width - 50
+        control_y = 220 + info_panel_height + 20
+        play_rect, quit_rect = draw_control_panel(control_x, control_y, control_panel_width, control_panel_height, args.pi_ip)
         
         # History chart (bottom, full width)
         chart_height = 300
@@ -365,6 +437,29 @@ def main():
         footer_text = small_font.render("Press ESC or close window to exit", True, GREY)
         footer_rect = footer_text.get_rect(center=(WIDTH // 2, HEIGHT - 20))
         screen.blit(footer_text, footer_rect)
+        
+        # Handle button clicks (after drawing to get button rects)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left mouse button
+                    if play_rect and play_rect.collidepoint(event.pos):
+                        # Send restart command to game
+                        if command_sock and args.pi_ip:
+                            try:
+                                command_sock.sendto(b"restart", (args.pi_ip, GAME_COMMAND_PORT))
+                                print(f"[Dashboard] Sent 'restart' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
+                            except Exception as e:
+                                print(f"[Dashboard] Error sending restart command: {e}")
+                    elif quit_rect and quit_rect.collidepoint(event.pos):
+                        # Send quit command to game
+                        if command_sock and args.pi_ip:
+                            try:
+                                command_sock.sendto(b"quit", (args.pi_ip, GAME_COMMAND_PORT))
+                                print(f"[Dashboard] Sent 'quit' command to {args.pi_ip}:{GAME_COMMAND_PORT}")
+                            except Exception as e:
+                                print(f"[Dashboard] Error sending quit command: {e}")
         
         pygame.display.flip()
     
