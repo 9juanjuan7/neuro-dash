@@ -10,20 +10,6 @@ from scipy import signal
 from collections import deque
 import time
 
-# Try to import torch (optional - only needed if model is used)
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    import torch.optim as optim
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-    torch = None
-    nn = None
-    F = None
-    optim = None
-
 # Try to import BrainFlow
 try:
     from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
@@ -39,74 +25,6 @@ try:
 except ImportError:
     PYLSL_AVAILABLE = False
     print("pylsl not available. LSL streaming disabled.")
-
-# -------------------------------
-# EEGNet 4-Channel Model Definition
-# -------------------------------
-
-if TORCH_AVAILABLE:
-    class EEGNet4Ch(nn.Module):
-        def __init__(self, n_channels=4, n_timepoints=250):
-            super(EEGNet4Ch, self).__init__()
-            self.n_channels = n_channels
-            self.n_timepoints = n_timepoints
-
-            # Temporal Convolution
-            self.conv1 = nn.Conv2d(1, 16, (1, 64), padding=(0, 32), bias=False)
-            self.batchnorm1 = nn.BatchNorm2d(16)
-
-            # Depthwise Convolution
-            self.depthwise = nn.Conv2d(16, 32, (n_channels, 1), groups=16, bias=False)
-            self.batchnorm2 = nn.BatchNorm2d(32)
-            self.pooling2 = nn.AvgPool2d((1, 4))
-            self.dropout2 = nn.Dropout(0.5)
-
-            # Separable Convolution
-            self.separable = nn.Conv2d(32, 32, (1, 16), padding=(0, 8), bias=False)
-            self.batchnorm3 = nn.BatchNorm2d(32)
-            self.pooling3 = nn.AvgPool2d((1, 8))
-            self.dropout3 = nn.Dropout(0.5)
-
-            # Fully Connected (output)
-            # This depends on timepoints and pooling size
-            self.output_size = self._get_output_size()
-            self.fc1 = nn.Linear(self.output_size, 1)
-
-        def _get_output_size(self):
-            # Simulate forward pass to compute flattened size
-            x = torch.zeros(1, 1, self.n_channels, self.n_timepoints)
-            x = self.conv1(x)
-            x = self.batchnorm1(x)
-            x = F.elu(x)
-            x = self.depthwise(x)
-            x = self.batchnorm2(x)
-            x = F.elu(x)
-            x = self.pooling2(x)
-            x = self.dropout2(x)
-            x = self.separable(x)
-            x = self.batchnorm3(x)
-            x = F.elu(x)
-            x = self.pooling3(x)
-            x = self.dropout3(x)
-            return x.view(1, -1).shape[1]
-
-        def forward(self, x):
-            x = F.elu(self.batchnorm1(self.conv1(x)))
-            x = F.elu(self.batchnorm2(self.depthwise(x)))
-            x = self.pooling2(x)
-            x = self.dropout2(x)
-            x = F.elu(self.batchnorm3(self.separable(x)))
-            x = self.pooling3(x)
-            x = self.dropout3(x)
-            x = x.view(x.size(0), -1)
-            x = torch.sigmoid(self.fc1(x))
-            return x
-else:
-    # Dummy class if torch not available
-    class EEGNet4Ch:
-        def __init__(self, *args, **kwargs):
-            raise ImportError("torch not available. Install with: pip install torch")
-
 
 class EEGStreamer:
     """
@@ -362,11 +280,10 @@ class EEGStreamer:
 
 
 # -------------------------------
-# BetaWaveProcessor with Model
+# BetaWaveProcessor - Threshold-based Focus Detection
 # -------------------------------
 class BetaWaveProcessor:
-    def __init__(self, sampling_rate: int = 250, beta_band: tuple = (13.0, 30.0), model_path="focus_eegnet_4ch.pth"):
-        # model_path parameter kept for compatibility but model is disabled
+    def __init__(self, sampling_rate: int = 250, beta_band: tuple = (13.0, 30.0)):
         self.sampling_rate = sampling_rate
         self.beta_band = beta_band
         self.buffer = deque(maxlen=sampling_rate)  # 1-second buffer
@@ -399,20 +316,6 @@ class BetaWaveProcessor:
         
         # Spike detection - track recent values to detect sudden jumps
         self.recent_scores = deque(maxlen=10)  # Track last 10 scores
-        
-        # MODEL DISABLED - Using threshold method only
-        # # Load model
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
-        # try:
-        #     self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-        #     self.model.eval()
-        #     print("✅ EEGNet focus model loaded")
-        #     self.model_loaded = True
-        # except Exception as e:
-        #     print(f"❌ Failed to load model: {e}")
-        #     self.model_loaded = False
-        self.model_loaded = False  # Always use threshold method
 
     # Add EEG data to buffer
     def add_data(self, data: np.ndarray):
@@ -443,54 +346,12 @@ class BetaWaveProcessor:
         self.timestamps.append(time.time())
         return beta_power
 
-    # Predict focus score using threshold method (model disabled)
+    # Compute focus score using threshold-based method
     def get_focus_score(self, beta_power: float = None, threshold: float = None) -> float:
-        # MODEL DISABLED - Always use threshold method
-        # This is the original implementation before the model was added
+        """Compute focus score (0.0 to 1.0) based on beta power threshold."""
         return self._threshold_focus(beta_power, threshold)
-        
-        # MODEL CODE (COMMENTED OUT):
-        # if not self.model_loaded:
-        #     return self._threshold_focus(beta_power, threshold)
-        # 
-        # if len(self.buffer) == 0:
-        #     return 0.0
-        # 
-        # data = np.array(list(self.buffer)).T  # n_channels x n_samples
-        # if data.shape[0] != 4:
-        #     return 0.0
-        # if data.shape[1] > 250:
-        #     data = data[:, -250:]
-        # elif data.shape[1] < 250:
-        #     padding = np.zeros((4, 250 - data.shape[1]))
-        #     data = np.concatenate([padding, data], axis=1)
-        # 
-        # data_normalized = np.zeros_like(data)
-        # for ch in range(data.shape[0]):
-        #     channel_data = data[ch, :]
-        #     channel_mean = np.mean(channel_data)
-        #     channel_std = np.std(channel_data)
-        #     if channel_std > 1e-6:
-        #         data_normalized[ch, :] = (channel_data - channel_mean) / channel_std
-        #     else:
-        #         data_normalized[ch, :] = channel_data - channel_mean
-        # 
-        # data = data_normalized
-        # data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
-        # 
-        # try:
-        #     with torch.no_grad():
-        #         pred = self.model(data_tensor)
-        #         raw_score = pred.item()
-        #         score = max(0.0, min(1.0, raw_score))
-        # except Exception as e:
-        #     print(f"⚠️  Model inference error: {e}, falling back to threshold method")
-        #     return self._threshold_focus(beta_power, threshold)
-        # 
-        # self.focus_scores.append(score)
-        # return score
 
-    # Old threshold-based fallback
+    # Threshold-based focus calculation
     def _threshold_focus(self, beta_power: float, threshold: float) -> float:
         if threshold is None or threshold <= 0 or beta_power is None:
             return 0.0
