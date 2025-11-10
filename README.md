@@ -2,8 +2,7 @@
 
 # NeuroDash: EEG-Powered Focus Racing Game
 
-**NeuroDash** is a neurofeedback game that transforms attention training into an engaging racing experience.  
-Built with **OpenBCI Ganglion** and **Pygame**, the system lets players control a car using their brainwaves — while clinicians or researchers can monitor focus levels in real time through a separate dashboard.
+NeuroDash helps hospitals capture pediatric measurements faster and calmer by turning focus into a measurable, hands‑free game with a clear “ready” signal for staff. Built with OpenBCI Ganglion EEG hardware and Python/Pygame, processing real-time beta wave signals to translate brain activity into interactive gameplay.
 
 ---
 
