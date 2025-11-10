@@ -58,22 +58,106 @@ Built with **OpenBCI Ganglion** and **Pygame**, the system lets players control 
 
 ## How to Run 🚀
 
-### 1. Start the Focus Server (EEG or Mock Mode)
+This setup uses LSL (Lab Streaming Layer) streaming for distributed operation, with the game running on a Raspberry Pi and the dashboard on a laptop. Both connect to the same LSL stream from OpenBCI GUI.
+
+### Prerequisites
+
+- OpenBCI Ganglion board connected to your laptop
+- OpenBCI GUI installed and running
+- Raspberry Pi set up with the repository (see [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md))
+- SSH access to the Raspberry Pi
+- Both devices on the same network (or using Tailscale/VPN)
+
+### Step-by-Step Setup
+
+#### 1. Start LSL Stream from OpenBCI GUI
+
+1. Open **OpenBCI GUI** on your laptop
+2. Connect to your **Ganglion** board
+3. Go to the **Networking** widget
+4. Set **Output = LSL**
+5. Set **Data Type = EEG** (or "Timeseries Raw")
+6. Set **Stream Name = "eegstream"** (or your preferred name)
+7. Click **Start LSL Stream**
+
+#### 2. Start LSL Forwarder (Laptop)
+
+On your laptop, run the forwarder to bridge the LSL stream to the Raspberry Pi:
+
 ```bash
-python focus_server.py
+python lsl_forwarder.py --pi-ip <pi-tailscale-ip> --stream-name "eegstream" --threshold 70 --mode both
 ```
-If OpenBCI is connected:
+
+Replace `<pi-tailscale-ip>` with your Raspberry Pi's IP address (e.g., `100.72.174.84`).
+
+The forwarder will:
+
+- Connect to the local LSL stream from OpenBCI GUI
+- Process EEG data and compute focus scores
+- Forward data to both the game (port 5005) and dashboard (port 5006) on the Pi
+
+#### 3. Start Dashboard (Laptop)
+
+In a new terminal on your laptop, run:
+
 ```bash
-python focus_server.py --board-type Ganglion --serial-port COM3
+python dashboard_pygame.py --pi-ip <pi-tailscale-ip>
 ```
-### 2. Launch the Game (Player View)
+
+Replace `<pi-tailscale-ip>` with your Raspberry Pi's IP address.
+
+The dashboard will:
+
+- Receive focus data from the forwarder
+- Display real-time focus metrics and history
+- Allow you to control the game (Play Again, Quit)
+
+#### 4. Start Game on Raspberry Pi
+
+SSH into your Raspberry Pi:
+
+```bash
+ssh <pi-username>@<pi-ip-address>
+```
+
+Once connected, navigate to the project directory:
+
+```bash
+cd ~/neuro-dash
+```
+
+Then run the game:
+
 ```bash
 bash start_game.sh
 ```
-### 3. Launch the Dashboard (Clinician View)
-```bash
-python dashboard_pygame.py --pi-ip <pi-ip-address>
-```
+
+This will:
+
+- Launch the focus racing game
+- The game will receive focus data via UDP from the forwarder running on your laptop
+- Display the game on the Pi's screen
+
+**Note:** The game receives data directly from the LSL forwarder via UDP (port 5005), so no additional LSL subscriber is needed on the Pi for this setup.
+
+### Alternative: Using Launch Scripts
+
+**On Laptop:**
+
+- Use `start_forwarder.bat` (Windows) or `start_forwarder.sh` (Linux/Mac) with the Pi IP as argument
+
+**On Raspberry Pi:**
+
+- Use `start_lsl_game.sh` to start the LSL subscriber and game
+- Use `start_game.sh` if you want to run the game separately
+
+### Troubleshooting
+
+- **LSL stream not found**: Make sure OpenBCI GUI is running and the LSL stream is started
+- **Connection issues**: Verify both devices are on the same network or using Tailscale
+- **Game not receiving data**: Check that the forwarder is running and the Pi IP is correct
+- **Dashboard not showing data**: Ensure the forwarder is running with `--mode both` or `--mode dashboard`
+  
 ## Team
 - Jordan Kwan
 - Jinn Kasai
