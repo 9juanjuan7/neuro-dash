@@ -379,21 +379,34 @@ def main():
                     sys.exit()
 
             # --- Get focus from server via UDP socket ---
-            # Default if no new data arrives
-            raw_focus = 50  
+            # Track if we've received any data (don't use default 50 if we have real data)
+            if not hasattr(main, '_has_received_data'):
+                main._has_received_data = False
+                main._last_focus_value = 50.0  # Initial default
+            
+            raw_focus = main._last_focus_value  # Use last received value as default
 
             try:
                 data, addr = sock.recvfrom(1024)
                 raw_focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
+                main._has_received_data = True
+                main._last_focus_value = raw_focus
+                
                 # Debug: print occasionally to verify data is being received
                 if not hasattr(main, '_last_udp_debug_time'):
                     main._last_udp_debug_time = 0
                 current_time = pygame.time.get_ticks() / 1000.0
-                if current_time - main._last_udp_debug_time > 2.0:
-                    print(f"[Game] Received focus: {raw_focus:.1f}% from {addr}")
+                if current_time - main._last_udp_debug_time > 1.0:
+                    print(f"[Game] Received focus: {raw_focus:.1f}% from {addr} | Smoothed: {smoothed_focus:.1f}%")
                     main._last_udp_debug_time = current_time
             except BlockingIOError:
-                pass  # no new data this frame
+                # No new data - use last received value (don't reset to 50)
+                if not main._has_received_data:
+                    # First time, no data yet - use default
+                    raw_focus = 50.0
+                else:
+                    # We've received data before, use last value
+                    raw_focus = main._last_focus_value
             except Exception as e:
                 # Debug: print errors
                 if not hasattr(main, '_last_error_time'):
