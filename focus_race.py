@@ -1,4 +1,13 @@
-import pygame
+try:
+    import pygame
+except ModuleNotFoundError:
+    print("Error: pygame is not installed in this Python environment.")
+    print("Install it into your active venv, for example:")
+    print("  python3 -m pip install pygame")
+    print("Then re-run: python3 focus_race.py")
+    import sys
+    sys.exit(1)
+
 import sys
 import random
 
@@ -350,6 +359,8 @@ def main():
     running = True
     winner = None
     smoke_particles = []
+
+    # Doctor UI is not auto-started by default. Run dashboard.py separately if desired.
 
     while running:
         dt = clock.tick(FPS)

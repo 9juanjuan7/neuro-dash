@@ -221,7 +221,7 @@ try:
             if len(ss.ts_history) > 1:
                 # Use simple lists for plotting; no pandas needed
                 graph_placeholder.line_chart(ss.att_history)
-        except Exception:
+        except:
             pass
 
         time.sleep(1.0/UPDATE_HZ)
