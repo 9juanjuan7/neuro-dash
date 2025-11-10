@@ -332,14 +332,28 @@ class BetaWaveProcessor:
         if len(self.buffer) < 50 or self.b is None or self.a is None:
             return 0.0
         data = np.array(list(self.buffer)).T  # n_channels x n_samples
-        total_power = 0.0
+        
+        # Normalize data to prevent scale issues (LSL data might be in different units than BrainFlow)
+        # This ensures consistent beta power calculation regardless of data source
+        data_normalized = data.copy()
         for ch in range(data.shape[0]):
+            channel_data = data[ch, :].astype(np.float64)
+            # Remove DC offset and normalize by standard deviation
+            channel_mean = np.mean(channel_data)
+            channel_std = np.std(channel_data)
+            if channel_std > 1e-6:
+                data_normalized[ch, :] = (channel_data - channel_mean) / channel_std
+            else:
+                data_normalized[ch, :] = channel_data - channel_mean
+        
+        total_power = 0.0
+        for ch in range(data_normalized.shape[0]):
             try:
-                filtered = signal.filtfilt(self.b, self.a, data[ch, :].astype(np.float64))
+                filtered = signal.filtfilt(self.b, self.a, data_normalized[ch, :])
                 total_power += np.var(filtered)
             except:
                 continue
-        beta_power = total_power / data.shape[0] if data.shape[0] > 0 else 0.0
+        beta_power = total_power / data_normalized.shape[0] if data_normalized.shape[0] > 0 else 0.0
         
         # Baseline tracking disabled - using absolute power approach for stability
         # self.baseline_samples.append(beta_power)
