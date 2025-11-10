@@ -85,7 +85,7 @@ python dashboard_pygame.py --pi-ip <pi-ip-address>
 ## Project Links
 - Devpost
 - Slide Deck
-- Demo Video
+- [Demo Video] (https://www.youtube.com/watch?v=61n5GsGkd9s)
 
 ## References
 - Lawhern VJ, Solon AJ, Waytowich NR, Gordon SM, Hung CP, Lance BJ. EEGNet: a compact convolutional neural network for EEG-based brain-computer interfaces. J Neural Eng. 2018 Oct;15(5):056013. doi: 10.1088/1741-2552/aace8c. Epub 2018 Jun 22. PMID: 29932424. [EEGNet](https://github.com/aliasvishnu/EEGNet)
