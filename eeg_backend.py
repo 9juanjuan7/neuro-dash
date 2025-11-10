@@ -22,6 +22,14 @@ except ImportError:
     BRAINFLOW_AVAILABLE = False
     print("BrainFlow not available. Using demo mode only.")
 
+# Try to import PyLSL
+try:
+    import pylsl
+    PYLSL_AVAILABLE = True
+except ImportError:
+    PYLSL_AVAILABLE = False
+    print("pylsl not available. LSL streaming disabled.")
+
 # -------------------------------
 # EEGNet 4-Channel Model Definition
 # -------------------------------
@@ -535,3 +543,122 @@ class BetaWaveProcessor:
         self.beta_history.clear()
         self.focus_scores.clear()
         self.timestamps.clear()
+
+
+class LSLReader:
+    """
+    Reads EEG data from LSL stream.
+    Compatible with OpenBCI GUI LSL streaming.
+    """
+    
+    def __init__(self, stream_name: str = "OpenBCI_EEG", timeout: float = 5.0):
+        """
+        Initialize LSL reader.
+        
+        Args:
+            stream_name: Name of the LSL stream to connect to
+            timeout: Timeout for stream discovery in seconds
+        """
+        if not PYLSL_AVAILABLE:
+            raise ImportError("pylsl not available. Install with: pip install pylsl")
+        
+        self.stream_name = stream_name
+        self.timeout = timeout
+        self.inlet = None
+        self.sampling_rate = 250  # Default, will be updated from stream
+        self.n_channels = 8  # Default, will be updated from stream
+        self.is_connected = False
+    
+    def connect(self) -> bool:
+        """
+        Connect to LSL stream.
+        
+        Returns:
+            True if connection successful
+        """
+        try:
+            print(f"Looking for LSL stream: {self.stream_name}...")
+            # Resolve all streams and filter by name
+            all_streams = pylsl.resolve_streams(wait_time=self.timeout)
+            
+            # Filter streams by name
+            streams = [s for s in all_streams if s.name() == self.stream_name]
+            
+            if len(streams) == 0:
+                print(f"❌ No LSL stream found with name: {self.stream_name}")
+                if len(all_streams) > 0:
+                    print(f"   Found {len(all_streams)} stream(s) with other names:")
+                    for s in all_streams:
+                        print(f"     - {s.name()}")
+                else:
+                    print("   No LSL streams found. Make sure OpenBCI GUI LSL stream is started")
+                return False
+            
+            # Get stream info
+            stream_info = streams[0]
+            self.sampling_rate = int(stream_info.nominal_srate())
+            self.n_channels = stream_info.channel_count()
+            
+            # Create inlet
+            self.inlet = pylsl.StreamInlet(stream_info)
+            
+            print(f"✅ Connected to LSL stream: {self.stream_name}")
+            print(f"   Sampling rate: {self.sampling_rate} Hz")
+            print(f"   Channels: {self.n_channels}")
+            
+            self.is_connected = True
+            return True
+            
+        except Exception as e:
+            print(f"❌ Failed to connect to LSL stream: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def get_data(self, n_samples: int = 250) -> Optional[np.ndarray]:
+        """
+        Get EEG data samples from LSL stream.
+        
+        Args:
+            n_samples: Number of samples to retrieve (approximate)
+            
+        Returns:
+            EEG data array (n_channels, n_samples) or None
+        """
+        if not self.is_connected or self.inlet is None:
+            return None
+        
+        try:
+            # Pull samples from LSL
+            # LSL returns samples in (n_samples, n_channels) format
+            samples, timestamps = self.inlet.pull_chunk(max_samples=n_samples, timeout=0.1)
+            
+            if len(samples) == 0:
+                return None
+            
+            # Convert to numpy array and transpose to (n_channels, n_samples)
+            data = np.array(samples).T
+            
+            return data
+            
+        except Exception as e:
+            print(f"Error getting data from LSL: {e}")
+            return None
+    
+    def disconnect(self):
+        """Disconnect from LSL stream."""
+        if self.inlet is not None:
+            try:
+                self.inlet.close_stream()
+                self.is_connected = False
+                print("Disconnected from LSL stream")
+            except Exception as e:
+                print(f"Error disconnecting from LSL: {e}")
+    
+    def start_streaming(self) -> bool:
+        """Start streaming (no-op for LSL, connection handles it)."""
+        return self.is_connected
+    
+    def stop_streaming(self):
+        """Stop streaming (no-op for LSL)."""
+        pass

@@ -70,6 +70,8 @@ if "smoothed_focus" not in ss:
     ss.smoothed_focus = 50.0  # Initialize smoothed focus (same as game)
 if "smoothing_alpha" not in ss:
     ss.smoothing_alpha = 0.15  # Same smoothing as game (15% new, 85% old)
+if "ready_flag_from_lsl" not in ss:
+    ss.ready_flag_from_lsl = None  # Ready flag from LSL subscriber
 
 # -----------------------------
 # Title & Header
@@ -203,12 +205,26 @@ try:
         if sock is not None:
             try:
                 data, addr = sock.recvfrom(1024)
-                focus_value = float(data.decode())
+                msg = data.decode()
+                
+                # LSL subscriber sends "attention_score,ready_flag" format
+                # Old format (just number) is also supported for backward compatibility
+                if ',' in msg:
+                    parts = msg.split(',')
+                    focus_value = float(parts[0])
+                    ready_flag = int(parts[1]) == 1 if len(parts) > 1 else False
+                    # Store ready flag in session state
+                    ss.ready_flag_from_lsl = ready_flag
+                else:
+                    # Old format - just a number
+                    focus_value = float(msg)
+                    ss.ready_flag_from_lsl = None
+                
                 raw_focus = focus_value * 100  # server sends 0-1, map to 0-100
                 
                 # Apply same smoothing as game (exponential moving average)
                 ss.smoothed_focus = ss.smoothing_alpha * raw_focus + (1 - ss.smoothing_alpha) * ss.smoothed_focus
-                attention = int(raw_focus)  # Use smoothed value
+                attention = int(ss.smoothed_focus)  # Use smoothed value
                 
                 received_real_data = True
                 ss.last_real_data_time = now
@@ -248,7 +264,11 @@ try:
             ss.using_demo = True
             ss.data_source_status = "⚠️ Demo Mode (no socket)"
 
-        focused = attention >= FOCUS_THRESHOLD
+        # Use ready flag from LSL if available, otherwise compute from attention
+        if ss.ready_flag_from_lsl is not None:
+            focused = ss.ready_flag_from_lsl
+        else:
+            focused = attention >= FOCUS_THRESHOLD
 
         # --- append to rolling history for graphs ---
         # Always use smoothed value for history (same as what's displayed)

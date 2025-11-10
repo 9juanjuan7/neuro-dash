@@ -1,0 +1,17 @@
+@echo off
+REM Launch script for Laptop (Dashboard mode) - Windows version
+REM Connects to LSL stream and sends attention scores + ready flags to dashboard
+
+echo 👩‍⚕️ Starting LSL Subscriber for Dashboard
+echo =========================================
+
+REM Activate virtual environment if it exists
+if exist venv\Scripts\activate.bat (
+    call venv\Scripts\activate.bat
+)
+
+REM Run the subscriber in dashboard mode
+python lsl_subscriber.py --mode dashboard --stream-name "OpenBCI_EEG" --dashboard-port 5006
+
+pause
+
