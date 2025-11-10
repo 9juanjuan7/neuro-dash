@@ -85,8 +85,8 @@ streamlit run dashboard.py
 - Dam Hanh Nguyen Mong
 
 ## Project Links
-- Devpost
-- Slide Deck
+- [Devpost](https://devpost.com/software/neurodrive-awgdio)
+- [Slide Deck](https://docs.google.com/presentation/d/1OVRy0oJ0sTellEWwlVn00hihXx4xbdlLNEIf56y-2qI/edit?usp=sharing)
 - Demo Video
 
 ## References
