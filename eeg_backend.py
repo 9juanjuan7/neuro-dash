@@ -22,9 +22,12 @@ except ImportError:
 try:
     import pylsl
     PYLSL_AVAILABLE = True
-except ImportError:
+except (ImportError, RuntimeError) as e:
     PYLSL_AVAILABLE = False
-    print("pylsl not available. LSL streaming disabled.")
+    print(f"pylsl not available: {e}")
+    print("LSL streaming disabled. To enable:")
+    print("  sudo apt install liblsl1 liblsl-dev")
+    print("  or: pip install pylsl (if liblsl is installed)")
 
 class EEGStreamer:
     """
