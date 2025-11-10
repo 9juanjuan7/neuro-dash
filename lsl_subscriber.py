@@ -50,6 +50,8 @@ def main():
     parser = argparse.ArgumentParser(description='LSL Subscriber for EEG Focus Game')
     parser.add_argument('--stream-name', type=str, default='eegstream',
                        help='Name of LSL stream to connect to (default: eegstream)')
+    parser.add_argument('--host-ip', type=str, default=None,
+                       help='IP address of host running OpenBCI GUI (for Tailscale/VPN connections)')
     parser.add_argument('--threshold', type=float, default=DEFAULT_FOCUS_THRESHOLD,
                        help='Focus threshold (beta power threshold)')
     parser.add_argument('--update-rate', type=float, default=0.016,
@@ -93,8 +95,13 @@ def main():
     # Connect to LSL stream
     print("\n🔌 Connecting to LSL stream...")
     print("   Make sure OpenBCI GUI is running and LSL stream is started!")
-    print("   Both devices must be on the same network for LSL to work.")
-    lsl_reader = LSLReader(stream_name=args.stream_name, timeout=15.0)
+    if args.host_ip:
+        print(f"   Using Tailscale/VPN mode with host IP: {args.host_ip}")
+        print("   Note: LSL multicast discovery may not work over VPNs")
+    else:
+        print("   Both devices must be on the same physical network for LSL to work.")
+        print("   If using Tailscale/VPN, use --host-ip option with the laptop's Tailscale IP")
+    lsl_reader = LSLReader(stream_name=args.stream_name, timeout=15.0, host_ip=args.host_ip)
     
     if not lsl_reader.connect():
         print("❌ Failed to connect to LSL stream!")

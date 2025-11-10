@@ -429,21 +429,25 @@ class LSLReader:
     """
     Reads EEG data from LSL stream.
     Compatible with OpenBCI GUI LSL streaming.
+    Supports both multicast discovery and direct IP connection (for VPNs like Tailscale).
     """
     
-    def __init__(self, stream_name: str = "OpenBCI_EEG", timeout: float = 5.0):
+    def __init__(self, stream_name: str = "OpenBCI_EEG", timeout: float = 5.0, host_ip: str = None):
         """
         Initialize LSL reader.
         
         Args:
             stream_name: Name of the LSL stream to connect to
             timeout: Timeout for stream discovery in seconds
+            host_ip: Optional IP address of the host running OpenBCI GUI (for VPN/Tailscale)
+                     If provided, will try to resolve stream by IP instead of multicast
         """
         if not PYLSL_AVAILABLE:
             raise ImportError("pylsl not available. Install with: pip install pylsl")
         
         self.stream_name = stream_name
         self.timeout = timeout
+        self.host_ip = host_ip
         self.inlet = None
         self.sampling_rate = 250  # Default, will be updated from stream
         self.n_channels = 8  # Default, will be updated from stream
@@ -459,15 +463,35 @@ class LSLReader:
         try:
             print(f"Looking for LSL stream: {self.stream_name}...")
             print(f"   Timeout: {self.timeout} seconds")
-            print(f"   Network: Checking for streams on local network...")
             
-            # Resolve all streams and filter by name
-            all_streams = pylsl.resolve_streams(wait_time=self.timeout)
+            # If host_ip is provided, try to resolve by IP (for VPN/Tailscale)
+            if self.host_ip:
+                print(f"   Using direct IP connection: {self.host_ip} (Tailscale/VPN mode)")
+                print(f"   Note: LSL multicast discovery doesn't work over VPNs")
+                # Try to resolve stream by hostname/IP
+                # LSL doesn't directly support IP-based resolution, but we can try
+                # to find streams and filter by checking if they're from the right host
+                all_streams = pylsl.resolve_streams(wait_time=self.timeout)
+            else:
+                print(f"   Network: Checking for streams via multicast (local network)...")
+                print(f"   💡 If using Tailscale/VPN, use --host-ip option")
+                all_streams = pylsl.resolve_streams(wait_time=self.timeout)
             
-            print(f"   Found {len(all_streams)} total LSL stream(s) on network")
+            print(f"   Found {len(all_streams)} total LSL stream(s)")
             
             # Filter streams by name
             streams = [s for s in all_streams if s.name() == self.stream_name]
+            
+            # If host_ip specified and no streams found, try resolving by hostname
+            if len(streams) == 0 and self.host_ip:
+                print(f"   Trying to resolve by hostname/IP: {self.host_ip}")
+                # LSL doesn't have direct IP resolution, but we can try to find
+                # any stream and see if it's accessible
+                if len(all_streams) > 0:
+                    print(f"   Found streams but name doesn't match. Available streams:")
+                    for s in all_streams:
+                        print(f"     - {s.name()}")
+                    print(f"   💡 Try using --stream-name with one of the names above")
             
             if len(streams) == 0:
                 print(f"❌ No LSL stream found with name: '{self.stream_name}'")

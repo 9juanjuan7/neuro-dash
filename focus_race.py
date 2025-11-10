@@ -14,7 +14,8 @@ import random
 import socket
 
 # UDP socket to receive focus from server
-UDP_IP = "127.0.0.1"
+# Bind to 0.0.0.0 to receive from external sources (like laptop forwarder over Tailscale)
+UDP_IP = "0.0.0.0"  # Changed from 127.0.0.1 to accept external connections
 UDP_PORT = 5005
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -382,10 +383,25 @@ def main():
             raw_focus = 50  
 
             try:
-                data, _ = sock.recvfrom(1024)
+                data, addr = sock.recvfrom(1024)
                 raw_focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
+                # Debug: print occasionally to verify data is being received
+                if not hasattr(main, '_last_udp_debug_time'):
+                    main._last_udp_debug_time = 0
+                current_time = pygame.time.get_ticks() / 1000.0
+                if current_time - main._last_udp_debug_time > 2.0:
+                    print(f"[Game] Received focus: {raw_focus:.1f}% from {addr}")
+                    main._last_udp_debug_time = current_time
             except BlockingIOError:
                 pass  # no new data this frame
+            except Exception as e:
+                # Debug: print errors
+                if not hasattr(main, '_last_error_time'):
+                    main._last_error_time = 0
+                current_time = pygame.time.get_ticks() / 1000.0
+                if current_time - main._last_error_time > 5.0:
+                    print(f"[Game] UDP error: {e}")
+                    main._last_error_time = current_time
 
             # Smooth the focus value to reduce jumpiness
             smoothed_focus = smoothing_alpha * raw_focus + (1 - smoothing_alpha) * smoothed_focus
