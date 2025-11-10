@@ -53,7 +53,8 @@ ai_img = load_and_scale("images/white-car.png", GREEN)
 class Car:
     def __init__(self, img, y):
         self.img = img
-        self.x = 50
+        self.start_x = 50
+        self.x = self.start_x
         self.y = y
         self.speed = 0
         self.finished = False
@@ -97,7 +98,7 @@ def draw_background():
     pygame.draw.rect(screen, GREY, (0, 140, WIDTH, 220))
     for i in range(0, WIDTH, 40):
         pygame.draw.rect(screen, WHITE, (i, 245, 20, 10))
-    pygame.draw.line(screen, RED, (FINISH_LINE, 120), (FINISH_LINE, 390), 8)
+    pygame.draw.line(screen, RED, (FINISH_LINE - 8, 120), (FINISH_LINE - 8, 390), 8)
 
     # --- Lower background ---
     if DIRT_IMG:
@@ -133,9 +134,9 @@ def draw_ui(focus, player, ai):
     screen.blit(value_text, value_rect)
 
     # --- Motivational message ABOVE the bar (with more spacing) ---
-    total_path = max(FINISH_LINE - 50 - player.img.get_width(), 1)
-    player_dist = min(max((player.x / total_path) * 100, 0), 100)
-    ai_dist = min(max((ai.x / total_path) * 100, 0), 100)
+    total_path = max(FINISH_LINE - player.start_x - player.img.get_width(), 1)
+    player_dist = min(max(((player.x - player.start_x) / total_path) * 100, 0), 100)
+    ai_dist = min(max(((ai.x - ai.start_x) / total_path) * 100, 0), 100)
     diff = player_dist - ai_dist
 
     if diff < -50:
