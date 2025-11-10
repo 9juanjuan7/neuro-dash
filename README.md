@@ -13,22 +13,15 @@ A simple browser-based car race controlled entirely by EEG focus (beta waves) us
 - **Leaderboard**: Track fastest race times and focus streaks
 - **Demo Mode**: Works with synthetic EEG data if hardware is unavailable
 
-## Installation
+## How to run
 
 ```bash
-pip install -r requirements.txt
+Launch the server
+python focus_server.py --board-type Ganglion --serial-port COM3
 ```
-
-For OpenBCI hardware support:
-```bash
-pip install brainflow
-```
-
-## Usage
-
 Run the game:
 ```bash
-streamlit run app.py
+focus.py
 ```
 
 ### Demo Mode
