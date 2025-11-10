@@ -18,7 +18,6 @@ DEFAULTS = {
     "READY_WINDOW_HOLD": 4.0,
     "UPDATE_HZ": 10,
 }
-
 # UDP port used by local focus servers (focus_server.py and server+display)
 UDP_PORT = 5005
 
