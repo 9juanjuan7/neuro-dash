@@ -58,7 +58,7 @@ def main():
     parser.add_argument('--dashboard-port', type=int, default=5006,
                        help='UDP port for dashboard on Pi (default: 5006)')
     parser.add_argument('--threshold', type=float, default=DEFAULT_FOCUS_THRESHOLD,
-                       help='Focus threshold (beta power threshold)')
+                       help='Focus threshold (beta power threshold, default: 70.0, try higher like 100-150 if too sensitive)')
     parser.add_argument('--update-rate', type=float, default=0.016,
                        help='Update rate in seconds (default: 0.016 = ~60 Hz)')
     parser.add_argument('--mode', choices=['game', 'dashboard', 'both'], default='both',
@@ -136,6 +136,13 @@ def main():
             # Compute beta power and attention score
             beta_power = processor.get_beta_power()
             attention_score = processor.get_focus_score(beta_power, focus_threshold)
+            
+            # Debug output (print every 2 seconds)
+            if not hasattr(main, '_last_debug_time'):
+                main._last_debug_time = 0
+            if current_time - main._last_debug_time > 2.0:
+                print(f"\n[Forwarder] Beta: {beta_power:.2f} | Threshold: {focus_threshold} | Focus: {attention_score*100:.1f}%")
+                main._last_debug_time = current_time
             
             # Compute ready flag
             ready_flag, ready_timer = compute_ready_flag(attention_score, ready_timer, dt)
