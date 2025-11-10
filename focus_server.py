@@ -15,11 +15,13 @@ import csv
 # Check if BrainFlow is available
 BRAINFLOW_AVAILABLE = getattr(eeg_backend, 'BRAINFLOW_AVAILABLE', False)
 
-# UDP socket to send focus to game
+# UDP socket to send focus to game and dashboard
 UDP_IP = "127.0.0.1"
-UDP_PORT_OUT = 5005  # game listens here
+UDP_PORT_GAME = 5005  # game listens here
+UDP_PORT_DASHBOARD = 5006  # dashboard listens here
 
-sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock_out_game = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock_out_dashboard = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # Default focus threshold (beta power threshold, not normalized focus score)
 DEFAULT_FOCUS_THRESHOLD = 70
@@ -119,7 +121,8 @@ def main():
     
     print(f"   Focus Threshold: {focus_threshold}")
     print(f"   Update Rate: {args.update_rate * 1000:.0f} ms ({1/args.update_rate:.1f} Hz)")
-    print(f"   Sending focus to: {UDP_IP}:{UDP_PORT_OUT}")
+    print(f"   Sending focus to game: {UDP_IP}:{UDP_PORT_GAME}")
+    print(f"   Sending focus to dashboard: {UDP_IP}:{UDP_PORT_DASHBOARD}")
     print("=" * 60)
     print(" Server running! Start the game to see focus data.")
     print("   Press Ctrl+C to stop.")
@@ -136,12 +139,13 @@ def main():
             # Get beta power and compute focus score
             beta_power = processor.get_beta_power()
             focus_score = processor.get_focus_score(beta_power, focus_threshold)
-            # if data is not None and len(list(np.mean(data, axis=0))) == 4:
-                # lister.append([*[float(x) for x in list(np.mean(data, axis=0))], beta_power, focus_score, 1 if focus_score >= 0.99 else 0])
-            # Send focus score to game (0.0 to 1.0)
-            # The game will multiply by 100 to get 0-100%
+            if data is not None and len(list(np.mean(data, axis=0))) == 4:
+                lister.append([*[float(x) for x in list(np.mean(data, axis=0))], beta_power, focus_score, 1 if focus_score >= 0.99 else 0])
+            # Send focus score to game and dashboard (0.0 to 1.0)
+            # The game/dashboard will multiply by 100 to get 0-100%
             msg = str(focus_score).encode()
-            sock_out.sendto(msg, (UDP_IP, UDP_PORT_OUT))
+            sock_out_game.sendto(msg, (UDP_IP, UDP_PORT_GAME))
+            sock_out_dashboard.sendto(msg, (UDP_IP, UDP_PORT_DASHBOARD))
             
             # Print status
             # print(f"Focus: {focus_score:.3f} (Beta Power: {beta_power:.2f})", end='\r')
@@ -162,15 +166,18 @@ def main():
         # Cleanup
         print("   Disconnecting...")
         eeg_streamer.disconnect()
-        sock_out.close()
+        sock_out_game.close()
+        sock_out_dashboard.close()
         print("   Server stopped.")
 
         # print(processor.get_history())
-        # with open("outputer.txt", 'w', newline='\n') as file:
-        #     writer = csv.writer(file)
+        with open("outputer.txt", 'w', newline='\n') as file:
+            writer = csv.writer(file)
 
-        #     # Write multiple rows at once
-        #     writer.writerows(lister)
+            writer.writerow("channel_1,channel_2,channel_3,channel_4,beta_power,focus_score,focused_classification".split(","))
+
+            # Write multiple rows at once
+            writer.writerows(lister)
 
 
 if __name__ == "__main__":
