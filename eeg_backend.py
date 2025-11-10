@@ -359,35 +359,40 @@ class BetaWaveProcessor:
         if threshold is None or threshold <= 0 or beta_power is None:
             return 0.0
         
-        # Use absolute power approach (more stable, no baseline drift issues)
-        max_power = threshold * 10.0  # Increased from 8.0 to 10.0 - much less sensitive
+        # Detect artifacts (extremely high beta power values indicate movement/noise)
+        # Normal beta power should be in the range of 10-200 for good signal
+        # Values above 1000 are likely artifacts
+        ARTIFACT_THRESHOLD = 1000.0
+        if beta_power > ARTIFACT_THRESHOLD:
+            # For artifacts, return a moderate value instead of maxing out
+            # This prevents the meter from jumping to 100% from head movements
+            artifact_score = min(0.6, 0.3 + (ARTIFACT_THRESHOLD / beta_power) * 0.3)
+            self.recent_scores.append(artifact_score)
+            if self.smoothed_focus is None:
+                self.smoothed_focus = artifact_score
+            else:
+                self.smoothed_focus = self.smoothing_alpha * artifact_score + (1 - self.smoothing_alpha) * self.smoothed_focus
+            return self.smoothed_focus
+        
+        # Use absolute power approach for normal values
+        # Adjust max_power based on threshold - higher threshold = less sensitive
+        # For threshold=70, we want max_power around 200-300 for normal operation
+        max_power = threshold * 3.0  # Changed from 10.0 to 3.0 for better scaling
         raw_score = min(beta_power / max_power, 1.0)
         
-        # Apply a much steeper curve to make it less sensitive
-        # Lower exponent = steeper curve = harder to reach high focus
-        score = raw_score ** 0.4  # Changed from 0.5 to 0.4 - even less sensitive
-        
-        # Map the score to allow full range 0-100%, with clearer response to changes
-        # Make it easier to see the relationship between focusing and speed
-        if raw_score > 0.7:
-            # For high values, allow reaching 100% with a steeper curve
-            excess = (raw_score - 0.7) / 0.3  # Normalize 0.7-1.0 to 0-1
-            # Apply a steeper curve to make it harder to reach 100%
-            curved_excess = excess ** 1.5
-            score = 0.7 ** 0.4 + curved_excess * (1.0 - 0.7 ** 0.4)
-        else:
-            # For lower values, use the power curve
-            score = raw_score ** 0.4
+        # Apply a power curve to make it more responsive to actual focus changes
+        # Higher exponent = more linear = more responsive
+        score = raw_score ** 0.6  # Changed from 0.4 to 0.6 for better responsiveness
         
         score = max(0.0, min(1.0, score))
         
-        # Spike detection - prevent sudden jumps
+        # Spike detection - prevent sudden jumps (only for non-artifact values)
         if len(self.recent_scores) > 0:
             recent_avg = np.mean(list(self.recent_scores))
-            # If current score is more than 0.4 above recent average, it's likely a spike
-            if score > recent_avg + 0.4:
+            # If current score is more than 0.3 above recent average, it's likely a spike
+            if score > recent_avg + 0.3:
                 # Cap the increase to prevent spikes
-                score = recent_avg + 0.2  # Limit increase to 0.2 per step
+                score = recent_avg + 0.15  # Limit increase to 0.15 per step
                 score = min(score, 1.0)
         
         self.recent_scores.append(score)
