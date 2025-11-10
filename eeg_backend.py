@@ -333,37 +333,28 @@ class BetaWaveProcessor:
             return 0.0
         data = np.array(list(self.buffer)).T  # n_channels x n_samples
         
-        # Remove DC offset only (don't normalize by std - that changes the power scale too much)
-        # LSL data might be in microvolts, BrainFlow might be in different units
-        # But we need to preserve the relative power scale for the threshold calculation
-        data_centered = data.copy()
-        for ch in range(data.shape[0]):
-            channel_data = data[ch, :].astype(np.float64)
-            # Only remove DC offset, don't normalize by std
-            channel_mean = np.mean(channel_data)
-            data_centered[ch, :] = channel_data - channel_mean
-        
+        # Process data exactly like main branch - no normalization, just use raw data
+        # Main branch doesn't normalize, so we shouldn't either
         total_power = 0.0
-        for ch in range(data_centered.shape[0]):
+        for ch in range(data.shape[0]):
             try:
-                filtered = signal.filtfilt(self.b, self.a, data_centered[ch, :])
+                # Use raw data directly (same as main branch)
+                filtered = signal.filtfilt(self.b, self.a, data[ch, :].astype(np.float64))
                 total_power += np.var(filtered)
             except:
                 continue
-        beta_power = total_power / data_centered.shape[0] if data_centered.shape[0] > 0 else 0.0
+        beta_power = total_power / data.shape[0] if data.shape[0] > 0 else 0.0
         
-        # Scale factor: LSL data from OpenBCI GUI might be in microvolts (typically 0.1-100 range)
-        # BrainFlow data might be in a different scale
-        # If beta_power is very small (< 1.0), it's likely normalized/microvolts - scale it up
-        # If beta_power is very large (> 1000), it's likely in raw units - scale it down
-        # This is a heuristic to match the expected scale for the threshold calculation
-        if beta_power > 0 and beta_power < 1.0:
-            # Likely microvolts or normalized - scale up to match BrainFlow scale
-            # Typical microvolts variance after filtering: 0.01-1.0, scale to 10-100 range
-            beta_power = beta_power * 100.0
-        elif beta_power > 1000.0:
-            # Likely in raw units - scale down
-            beta_power = beta_power / 100.0
+        # Debug: Print raw data and beta power to see if data is actually changing
+        if not hasattr(self, '_last_beta_debug_time'):
+            self._last_beta_debug_time = time.time()
+        if time.time() - self._last_beta_debug_time > 2.0:
+            if data.size > 0:
+                raw_min = np.min(data)
+                raw_max = np.max(data)
+                raw_std = np.std(data)
+                print(f"[Beta Debug] Raw data range: [{raw_min:.2f}, {raw_max:.2f}], Std: {raw_std:.2f}, Beta power: {beta_power:.2f}, Buffer size: {len(self.buffer)}")
+            self._last_beta_debug_time = time.time()
         
         # Baseline tracking disabled - using absolute power approach for stability
         # self.baseline_samples.append(beta_power)
@@ -579,6 +570,18 @@ class LSLReader:
             
             # Convert to numpy array and transpose to (n_channels, n_samples)
             data = np.array(samples).T
+            
+            # Debug: Print data statistics occasionally to verify data is changing
+            if not hasattr(self, '_last_data_debug_time'):
+                self._last_data_debug_time = time.time()
+            if time.time() - self._last_data_debug_time > 3.0:
+                if data.size > 0:
+                    data_min = np.min(data)
+                    data_max = np.max(data)
+                    data_mean = np.mean(data)
+                    data_std = np.std(data)
+                    print(f"[LSL Data] Range: [{data_min:.2f}, {data_max:.2f}], Mean: {data_mean:.2f}, Std: {data_std:.2f}, Shape: {data.shape}")
+                self._last_data_debug_time = time.time()
             
             return data
             
