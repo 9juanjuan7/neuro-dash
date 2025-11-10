@@ -210,6 +210,7 @@ try:
         render_status()
 
         # Render readiness progress bar (0..1)
+
         try:
             progress = min(1.0, ss.ready_timer / float(READY_SECONDS))
         except Exception:
@@ -217,10 +218,9 @@ try:
         ready_bar_placeholder.progress(progress, text=f"Readiness: {int(progress*100)}%")
 
         # Render history chart (attention only, like focus_race.py's display)
-        try:
-            if len(ss.ts_history) > 1:
-                # Use simple lists for plotting; no pandas needed
-                graph_placeholder.line_chart(ss.att_history)
+        if len(ss.ts_history) > 1:
+            # Use simple lists for plotting; no pandas needed
+            graph_placeholder.line_chart(ss.att_history)
 
         time.sleep(1.0/UPDATE_HZ)
 
