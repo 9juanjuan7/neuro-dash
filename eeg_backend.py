@@ -316,8 +316,6 @@ class BetaWaveProcessor:
         self.smoothing_alpha = 0.25  # 0.0 = no smoothing (instant), 1.0 = no change (fully smoothed)
         # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
         # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
-        # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
-        # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
         
         # Spike detection - track recent values to detect sudden jumps
         self.recent_scores = deque(maxlen=10)  # Track last 10 scores
