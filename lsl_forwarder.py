@@ -107,8 +107,10 @@ def main():
         print("   3. Stream name matches: " + args.stream_name)
         sys.exit(1)
     
-    # Initialize processor
+    # Initialize processor with LSL stream's actual sampling rate
+    # This is critical - must match the stream's sampling rate for accurate processing
     sampling_rate = lsl_reader.sampling_rate
+    print(f"   Initializing processor with sampling rate: {sampling_rate} Hz")
     processor = BetaWaveProcessor(sampling_rate=sampling_rate)
     focus_threshold = args.threshold
     
