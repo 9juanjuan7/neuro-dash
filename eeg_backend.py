@@ -333,27 +333,37 @@ class BetaWaveProcessor:
             return 0.0
         data = np.array(list(self.buffer)).T  # n_channels x n_samples
         
-        # Normalize data to prevent scale issues (LSL data might be in different units than BrainFlow)
-        # This ensures consistent beta power calculation regardless of data source
-        data_normalized = data.copy()
+        # Remove DC offset only (don't normalize by std - that changes the power scale too much)
+        # LSL data might be in microvolts, BrainFlow might be in different units
+        # But we need to preserve the relative power scale for the threshold calculation
+        data_centered = data.copy()
         for ch in range(data.shape[0]):
             channel_data = data[ch, :].astype(np.float64)
-            # Remove DC offset and normalize by standard deviation
+            # Only remove DC offset, don't normalize by std
             channel_mean = np.mean(channel_data)
-            channel_std = np.std(channel_data)
-            if channel_std > 1e-6:
-                data_normalized[ch, :] = (channel_data - channel_mean) / channel_std
-            else:
-                data_normalized[ch, :] = channel_data - channel_mean
+            data_centered[ch, :] = channel_data - channel_mean
         
         total_power = 0.0
-        for ch in range(data_normalized.shape[0]):
+        for ch in range(data_centered.shape[0]):
             try:
-                filtered = signal.filtfilt(self.b, self.a, data_normalized[ch, :])
+                filtered = signal.filtfilt(self.b, self.a, data_centered[ch, :])
                 total_power += np.var(filtered)
             except:
                 continue
-        beta_power = total_power / data_normalized.shape[0] if data_normalized.shape[0] > 0 else 0.0
+        beta_power = total_power / data_centered.shape[0] if data_centered.shape[0] > 0 else 0.0
+        
+        # Scale factor: LSL data from OpenBCI GUI might be in microvolts (typically 0.1-100 range)
+        # BrainFlow data might be in a different scale
+        # If beta_power is very small (< 1.0), it's likely normalized/microvolts - scale it up
+        # If beta_power is very large (> 1000), it's likely in raw units - scale it down
+        # This is a heuristic to match the expected scale for the threshold calculation
+        if beta_power > 0 and beta_power < 1.0:
+            # Likely microvolts or normalized - scale up to match BrainFlow scale
+            # Typical microvolts variance after filtering: 0.01-1.0, scale to 10-100 range
+            beta_power = beta_power * 100.0
+        elif beta_power > 1000.0:
+            # Likely in raw units - scale down
+            beta_power = beta_power / 100.0
         
         # Baseline tracking disabled - using absolute power approach for stability
         # self.baseline_samples.append(beta_power)
