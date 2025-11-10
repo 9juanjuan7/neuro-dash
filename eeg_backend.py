@@ -22,7 +22,6 @@ except ImportError:
     BRAINFLOW_AVAILABLE = False
     print("BrainFlow not available. Using demo mode only.")
 
-
 # -------------------------------
 # EEGNet 4-Channel Model Definition
 # -------------------------------
