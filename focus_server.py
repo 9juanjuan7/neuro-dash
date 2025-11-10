@@ -9,6 +9,8 @@ import argparse
 import sys
 from eeg_backend import EEGStreamer, BetaWaveProcessor
 import eeg_backend
+import numpy as np
+import csv
 
 # Check if BrainFlow is available
 BRAINFLOW_AVAILABLE = getattr(eeg_backend, 'BRAINFLOW_AVAILABLE', False)
@@ -20,8 +22,9 @@ UDP_PORT_OUT = 5005  # game listens here
 sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # Default focus threshold (beta power threshold, not normalized focus score)
-DEFAULT_FOCUS_THRESHOLD = 70.0
+DEFAULT_FOCUS_THRESHOLD = 70
 
+lister = []
 
 def main():
     """Main server loop."""
@@ -43,7 +46,7 @@ def main():
     # Initialize EEG streamer
     use_demo = args.demo
     if not use_demo and not BRAINFLOW_AVAILABLE:
-        print("⚠️ BrainFlow not available. Falling back to demo mode.")
+        print(" BrainFlow not available. Falling back to demo mode.")
         use_demo = True
     
     print("=" * 60)
@@ -51,22 +54,22 @@ def main():
     print("=" * 60)
     
     if use_demo:
-        print("📱 Mode: DEMO (synthetic EEG data)")
+        print(" Mode: DEMO (synthetic EEG data)")
         eeg_streamer = EEGStreamer(use_demo=True)
     else:
-        print("🔌 Mode: HARDWARE (OpenBCI)")
+        print(" Mode: HARDWARE (OpenBCI)")
         print(f"   Board Type: {args.board_type}")
         if args.serial_port:
             print(f"   Serial Port: {args.serial_port}")
         elif args.mac_address:
             print(f"   MAC Address: {args.mac_address}")
         else:
-            print("   ⚠️ No connection method specified. Using default COM3")
+            print("    No connection method specified. Using default COM3")
             args.serial_port = "COM3"
         
         # Map board type to BrainFlow ID
         if not BRAINFLOW_AVAILABLE:
-            print("❌ BrainFlow not installed! Install with: pip install brainflow")
+            print(" BrainFlow not installed! Install with: pip install brainflow")
             sys.exit(1)
         
         from brainflow.board_shim import BoardIds
@@ -77,7 +80,7 @@ def main():
         }
         board_id = board_id_map.get(args.board_type)
         if board_id is None:
-            print(f"❌ Invalid board type: {args.board_type}")
+            print(f" Invalid board type: {args.board_type}")
             sys.exit(1)
         
         # Initialize streamer
@@ -90,9 +93,9 @@ def main():
             mac_address=args.mac_address,
             board_id=board_id
         ):
-            print("   ✅ Connected!")
+            print("   Connected!")
         else:
-            print("   ❌ Connection failed!")
+            print("    Connection failed!")
             print("   Common issues:")
             print("   1. Device not connected or powered on")
             print("   2. Serial port/MAC address is incorrect")
@@ -104,9 +107,9 @@ def main():
     # Start streaming
     print("   Starting EEG streaming...")
     if eeg_streamer.start_streaming():
-        print("   ✅ Streaming started!")
+        print("   Streaming started!")
     else:
-        print("   ❌ Failed to start streaming!")
+        print("    Failed to start streaming!")
         eeg_streamer.disconnect()
         sys.exit(1)
     
@@ -118,7 +121,7 @@ def main():
     print(f"   Update Rate: {args.update_rate * 1000:.0f} ms ({1/args.update_rate:.1f} Hz)")
     print(f"   Sending focus to: {UDP_IP}:{UDP_PORT_OUT}")
     print("=" * 60)
-    print("🚀 Server running! Start the game to see focus data.")
+    print(" Server running! Start the game to see focus data.")
     print("   Press Ctrl+C to stop.")
     print("=" * 60)
     
@@ -128,26 +131,31 @@ def main():
             data = eeg_streamer.get_data(n_samples=250)
             if data is not None:
                 processor.add_data(data)
+                
             
             # Get beta power and compute focus score
             beta_power = processor.get_beta_power()
             focus_score = processor.get_focus_score(beta_power, focus_threshold)
-            
+            # if data is not None and len(list(np.mean(data, axis=0))) == 4:
+                # lister.append([*[float(x) for x in list(np.mean(data, axis=0))], beta_power, focus_score, 1 if focus_score >= 0.99 else 0])
             # Send focus score to game (0.0 to 1.0)
             # The game will multiply by 100 to get 0-100%
             msg = str(focus_score).encode()
             sock_out.sendto(msg, (UDP_IP, UDP_PORT_OUT))
             
             # Print status
-            print(f"Focus: {focus_score:.3f} (Beta Power: {beta_power:.2f})", end='\r')
+            # print(f"Focus: {focus_score:.3f} (Beta Power: {beta_power:.2f})", end='\r')
+            # print(beta_power, focus_score, 1 if focus_score > 0.5 else 0, np.mean(data, axis=0))
+            # print(np.mean(data, axis=0))
+            # print(data.shape)
             
             # Sleep to control update rate
             time.sleep(args.update_rate)
     
     except KeyboardInterrupt:
-        print("\n\n🛑 Stopping server...")
+        print("\n\nStopping server...")
     except Exception as e:
-        print(f"\n\n❌ Error: {e}")
+        print(f"\n\nError: {e}")
         import traceback
         traceback.print_exc()
     finally:
@@ -155,7 +163,14 @@ def main():
         print("   Disconnecting...")
         eeg_streamer.disconnect()
         sock_out.close()
-        print("   ✅ Server stopped.")
+        print("   Server stopped.")
+
+        # print(processor.get_history())
+        # with open("outputer.txt", 'w', newline='\n') as file:
+        #     writer = csv.writer(file)
+
+        #     # Write multiple rows at once
+        #     writer.writerows(lister)
 
 
 if __name__ == "__main__":

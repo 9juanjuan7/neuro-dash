@@ -8,6 +8,7 @@ from scipy import signal
 from typing import Optional, Tuple
 from collections import deque
 import time
+import csv
 
 # Try to import BrainFlow
 try:
@@ -34,7 +35,7 @@ class EEGStreamer:
         self.board = None
         self.is_streaming = False
         self.sampling_rate = 250
-        self.n_channels = 8
+        self.n_channels = 4
         
         if use_demo:
             self._init_demo()
@@ -132,13 +133,13 @@ class EEGStreamer:
             eeg_channels = BoardShim.get_eeg_channels(self.board_id)
             self.n_channels = len(eeg_channels)
             
-            print(f"✅ Successfully connected to {board_name}!")
+            print(f" Successfully connected to {board_name}!")
             print(f"   Sampling rate: {self.sampling_rate} Hz")
             print(f"   EEG channels: {self.n_channels}")
             
             return True
         except Exception as e:
-            print(f"❌ Connection failed: {e}")
+            print(f" Connection failed: {e}")
             print(f"   Attempted: board_id={self.board_id}, serial_port={serial_port}, mac_address={mac_address}")
             
             # Clean up on failure
