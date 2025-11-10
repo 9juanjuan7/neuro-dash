@@ -364,14 +364,21 @@ class BetaWaveProcessor:
         # Values above 1000 are likely artifacts
         ARTIFACT_THRESHOLD = 1000.0
         if beta_power > ARTIFACT_THRESHOLD:
-            # For artifacts, return a moderate value instead of maxing out
-            # This prevents the meter from jumping to 100% from head movements
-            artifact_score = min(0.6, 0.3 + (ARTIFACT_THRESHOLD / beta_power) * 0.3)
-            self.recent_scores.append(artifact_score)
+            # For artifacts, show a visible spike but don't max out
+            # Use less smoothing for artifacts so they're more noticeable
+            # Scale artifact score: 1000 = 0.5, 10000+ = 0.9
+            artifact_ratio = min(1.0, (beta_power - ARTIFACT_THRESHOLD) / (ARTIFACT_THRESHOLD * 9))
+            artifact_score = 0.5 + artifact_ratio * 0.4  # Range: 0.5 to 0.9
+            
+            # Apply less smoothing for artifacts so they're visible
             if self.smoothed_focus is None:
                 self.smoothed_focus = artifact_score
             else:
-                self.smoothed_focus = self.smoothing_alpha * artifact_score + (1 - self.smoothing_alpha) * self.smoothed_focus
+                # Use higher alpha (less smoothing) for artifacts to make them more visible
+                artifact_alpha = min(0.5, self.smoothing_alpha * 2.0)
+                self.smoothed_focus = artifact_alpha * artifact_score + (1 - artifact_alpha) * self.smoothed_focus
+            
+            self.recent_scores.append(artifact_score)
             return self.smoothed_focus
         
         # Use absolute power approach for normal values
