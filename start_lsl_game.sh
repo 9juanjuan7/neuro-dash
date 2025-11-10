@@ -22,4 +22,4 @@ if [ ! -f "lsl_subscriber.py" ]; then
 fi
 
 # Run the subscriber in game mode
-python lsl_subscriber.py --mode game --stream-name "OpenBCI_EEG" --game-port 5005
+python lsl_subscriber.py --mode game --stream-name "eegstream" --game-port 5005

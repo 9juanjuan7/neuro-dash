@@ -48,8 +48,8 @@ def compute_ready_flag(attention_score: float, ready_timer: float, dt: float) ->
 def main():
     """Main subscriber loop."""
     parser = argparse.ArgumentParser(description='LSL Subscriber for EEG Focus Game')
-    parser.add_argument('--stream-name', type=str, default='OpenBCI_EEG',
-                       help='Name of LSL stream to connect to (default: OpenBCI_EEG)')
+    parser.add_argument('--stream-name', type=str, default='eegstream',
+                       help='Name of LSL stream to connect to (default: eegstream)')
     parser.add_argument('--threshold', type=float, default=DEFAULT_FOCUS_THRESHOLD,
                        help='Focus threshold (beta power threshold)')
     parser.add_argument('--update-rate', type=float, default=0.016,
