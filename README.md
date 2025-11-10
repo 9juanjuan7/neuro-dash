@@ -77,4 +77,5 @@ If no hardware is connected, the app automatically uses demo mode with synthetic
 - Slide Deck
 - Demo Video
 
-## Resources
+## Extra Materials 
+(Video Link)
