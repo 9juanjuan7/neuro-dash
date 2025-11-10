@@ -72,28 +72,11 @@ clock = pygame.time.Clock()
 WIDTH, HEIGHT = INITIAL_WIDTH, INITIAL_HEIGHT
 fullscreen = False
 
-# Fonts (will be scaled dynamically)
-base_font_size = 48
-base_large_font_size = 72
-base_small_font_size = 32
-base_title_font_size = 64
-
-def get_scaled_fonts():
-    """Get fonts scaled to current window size"""
-    scale = min(WIDTH / INITIAL_WIDTH, HEIGHT / INITIAL_HEIGHT)
-    return {
-        'font': pygame.font.Font(None, int(base_font_size * scale)),
-        'large_font': pygame.font.Font(None, int(base_large_font_size * scale)),
-        'small_font': pygame.font.Font(None, int(base_small_font_size * scale)),
-        'title_font': pygame.font.Font(None, int(base_title_font_size * scale)),
-    }
-
-# Initial fonts
-fonts = get_scaled_fonts()
-font = fonts['font']
-large_font = fonts['large_font']
-small_font = fonts['small_font']
-title_font = fonts['title_font']
+# Fonts
+font = pygame.font.Font(None, 48)
+large_font = pygame.font.Font(None, 72)
+small_font = pygame.font.Font(None, 32)
+title_font = pygame.font.Font(None, 64)
 
 # --------------------------
 # DATA STORAGE
@@ -154,8 +137,8 @@ def draw_status_panel(focus, ready_flag, connection_status, x, y, width, height)
     status_label = small_font.render("Connection:", True, BLACK)
     screen.blit(status_label, (x + 20, status_y))
     
-    status_color = GREEN if "Connected" in connection_status else RED
-    status_text = font.render(connection_status[:30], True, status_color)  # Truncate if too long
+    status_color = GREEN if connection_status == "Connected" else RED
+    status_text = font.render(connection_status, True, status_color)
     screen.blit(status_text, (x + 20, status_y + 35))
     
     # Ready status
@@ -372,8 +355,6 @@ def main():
                 if not fullscreen:
                     WIDTH, HEIGHT = max(MIN_WIDTH, event.w), max(MIN_HEIGHT, event.h)
                     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-                    # Update fonts for new size
-                    fonts = get_scaled_fonts()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     # Toggle fullscreen
@@ -383,8 +364,6 @@ def main():
                         WIDTH, HEIGHT = screen.get_size()
                     else:
                         screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-                    # Update fonts for new size
-                    fonts = get_scaled_fonts()
                 elif event.key == pygame.K_ESCAPE:
                     if fullscreen:
                         # Exit fullscreen on ESC
@@ -471,7 +450,7 @@ def main():
         status_panel_height = 300
         draw_status_panel(focus, ready_flag, connection_status, 50, 220, status_panel_width, status_panel_height)
         
-        # Info panel (right top) - increased height to fit all content
+        # Info panel (right top)
         info_panel_width = 350
         info_panel_height = 280  # Increased from 250 to fit Minimum and Data Points
         info_x = WIDTH - info_panel_width - 50
