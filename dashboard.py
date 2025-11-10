@@ -209,7 +209,7 @@ try:
                 
                 # Apply same smoothing as game (exponential moving average)
                 ss.smoothed_focus = ss.smoothing_alpha * raw_focus + (1 - ss.smoothing_alpha) * ss.smoothed_focus
-                attention = int(ss.smoothed_focus)  # Use smoothed value
+                attention = int(raw_focus)  # Use smoothed value
                 
                 received_real_data = True
                 ss.last_real_data_time = now
