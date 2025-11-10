@@ -21,6 +21,7 @@ UDP_PORT = 5005
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.setblocking(False)  # so it doesn't freeze the game loop
+print(f"[Game] UDP socket bound to {UDP_IP}:{UDP_PORT} - waiting for data...")
 
 # --------------------------
 # CONFIG

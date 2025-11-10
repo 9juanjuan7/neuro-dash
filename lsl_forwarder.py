@@ -62,7 +62,9 @@ def main():
     parser.add_argument('--update-rate', type=float, default=0.016,
                        help='Update rate in seconds (default: 0.016 = ~60 Hz, matches focus_server.py)')
     parser.add_argument('--mode', choices=['game', 'dashboard', 'both'], default='both',
-                       help='Which application(s) to send data to (default: both)')
+                        help='Which application(s) to send data to (default: both)')
+    parser.add_argument('--also-localhost', action='store_true',
+                        help='Also send to localhost (127.0.0.1) for local testing')
     
     args = parser.parse_args()
     
@@ -85,14 +87,22 @@ def main():
     # Setup UDP sockets
     sock_game = None
     sock_dashboard = None
+    sock_game_local = None
+    sock_dashboard_local = None
     
     if args.mode in ['game', 'both']:
         sock_game = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print(f"📤 Game UDP: {args.pi_ip}:{args.game_port}")
+        if args.also_localhost:
+            sock_game_local = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"📤 Game UDP (localhost): 127.0.0.1:{args.game_port}")
     
     if args.mode in ['dashboard', 'both']:
         sock_dashboard = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print(f"📤 Dashboard UDP: {args.pi_ip}:{args.dashboard_port}")
+        if args.also_localhost:
+            sock_dashboard_local = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"📤 Dashboard UDP (localhost): 127.0.0.1:{args.dashboard_port}")
     
     # Connect to LSL stream locally
     print("\n🔌 Connecting to LSL stream locally...")
@@ -157,7 +167,13 @@ def main():
                 try:
                     sock_game.sendto(msg, (args.pi_ip, args.game_port))
                 except Exception as e:
-                    print(f"⚠️  Error sending to game: {e}")
+                    print(f"⚠️  Error sending to game (Pi): {e}")
+            if sock_game_local is not None:
+                msg = str(attention_score).encode()
+                try:
+                    sock_game_local.sendto(msg, ('127.0.0.1', args.game_port))
+                except Exception as e:
+                    print(f"⚠️  Error sending to game (localhost): {e}")
             
             # Send to dashboard (attention score and ready flag)
             if sock_dashboard is not None:
@@ -166,7 +182,14 @@ def main():
                 try:
                     sock_dashboard.sendto(msg, (args.pi_ip, args.dashboard_port))
                 except Exception as e:
-                    print(f"⚠️  Error sending to dashboard: {e}")
+                    print(f"⚠️  Error sending to dashboard (Pi): {e}")
+            if sock_dashboard_local is not None:
+                # Format: "attention_score,ready_flag"
+                msg = f"{attention_score:.4f},{1 if ready_flag else 0}".encode()
+                try:
+                    sock_dashboard_local.sendto(msg, ('127.0.0.1', args.dashboard_port))
+                except Exception as e:
+                    print(f"⚠️  Error sending to dashboard (localhost): {e}")
             
             # Print status
             ready_status = "🟢 READY" if ready_flag else "⚪ Not Ready"
@@ -189,6 +212,10 @@ def main():
             sock_game.close()
         if sock_dashboard:
             sock_dashboard.close()
+        if sock_game_local:
+            sock_game_local.close()
+        if sock_dashboard_local:
+            sock_dashboard_local.close()
         print("   ✅ Forwarder stopped.")
 
 
