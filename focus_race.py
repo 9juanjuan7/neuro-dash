@@ -73,14 +73,25 @@ def map_focus_to_speed(focus):
 # --------------------------
 # DRAW FUNCTIONS
 # --------------------------
+# Preload background images once at the top
+try:
+    SKY_IMG = pygame.image.load("images/grass.png").convert()
+    SKY_IMG = pygame.transform.smoothscale(SKY_IMG, (WIDTH, 140))
+except:
+    SKY_IMG = None
+
+try:
+    DIRT_IMG = pygame.image.load("images/dirt.png").convert()
+    DIRT_IMG = pygame.transform.smoothscale(DIRT_IMG, (WIDTH, HEIGHT - 360))
+except:
+    DIRT_IMG = None
+
 def draw_background():
     # --- Upper background ---
-    try:
-        sky_img = pygame.image.load("images/grass.png").convert()
-        sky_img = pygame.transform.smoothscale(sky_img, (WIDTH, 140))  # only above road
-        screen.blit(sky_img, (0, 0))
-    except:
-        pygame.draw.rect(screen, (100, 180, 255), (0, 0, WIDTH, 140))  # fallback sky
+    if SKY_IMG:
+        screen.blit(SKY_IMG, (0, 0))
+    else:
+        pygame.draw.rect(screen, (100, 180, 255), (0, 0, WIDTH, 140))
 
     # --- Road ---
     pygame.draw.rect(screen, GREY, (0, 140, WIDTH, 220))
@@ -89,12 +100,10 @@ def draw_background():
     pygame.draw.line(screen, RED, (FINISH_LINE, 120), (FINISH_LINE, 390), 8)
 
     # --- Lower background ---
-    try:
-        dirt_img = pygame.image.load("images/dirt.png").convert()
-        dirt_img = pygame.transform.smoothscale(dirt_img, (WIDTH, HEIGHT-360))
-        screen.blit(dirt_img, (0, 360))
-    except:
-        pygame.draw.rect(screen, (150, 120, 80), (0, 360, WIDTH, HEIGHT-360))
+    if DIRT_IMG:
+        screen.blit(DIRT_IMG, (0, 360))
+    else:
+        pygame.draw.rect(screen, (150, 120, 80), (0, 360, WIDTH-360, HEIGHT-360))
 
 
 def draw_ui(focus, player, ai):
@@ -319,8 +328,7 @@ def show_end_screen(winner):
                     pygame.quit()
                     sys.exit()
                 elif event.key == pygame.K_r:
-                    main()  # restart game
-                    return
+                    waiting = False  # Exit end screen and restart game
 
 
 
@@ -328,52 +336,59 @@ def show_end_screen(winner):
 # MAIN LOOP
 # --------------------------
 def main():
-    player = Car(player_img, 150)
-    ai = Car(ai_img, 270)
-    running = True
-    winner = None
-    smoke_particles = []
-    focus_value = 50  # initial focus
+    while True:  # outer loop for restarts
+        # --- INITIALIZE GAME STATE ---
+        player = Car(player_img, 150)
+        ai = Car(ai_img, 270)
+        smoke_particles = []
+        focus_value = 50
+        winner = None
+        running = True
 
-    while running:
-        dt = clock.tick(FPS)
+        while running:
+            dt = clock.tick(FPS)
 
-        # --- Optional manual focus adjustment ---
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            focus_value = min(focus_value + 1, 100)
-        elif keys[pygame.K_DOWN]:
-            focus_value = max(focus_value - 1, 0)
-        else:
-            focus_value = max(focus_value - 0.05, 0)  # slowly decay
+            # --- EVENTS ---
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
 
-        # --- Update car speeds ---
-        player.speed = map_focus_to_speed(focus_value)
-        ai.speed = AI_SPEED
+            # --- Optional manual focus adjustment ---
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_UP]:
+                focus_value = min(focus_value + 1, 100)
+            elif keys[pygame.K_DOWN]:
+                focus_value = max(focus_value - 1, 0)
+            else:
+                focus_value = max(focus_value - 0.05, 0)  # decay
 
-        # Smoke effect if focus high
-        if focus_value >= 75:
-            smoke_particles.extend(create_smoke(player.x, player.y + player.img.get_height() // 2))
+            # --- Update car speeds ---
+            player.speed = map_focus_to_speed(focus_value)
+            ai.speed = AI_SPEED
 
-        player.update()
-        ai.update()
+            # Smoke effect if focus high
+            if focus_value >= 75 and len(smoke_particles) < 200:
+                smoke_particles.extend(create_smoke(player.x, player.y + player.img.get_height() // 2))
 
-        # --- DRAW SECTION ---
-        draw_background()
-        player.draw()
-        ai.draw()
+            player.update()
+            ai.update()
 
-        # draw_ui now also includes the bottom-left distance panel
-        player_dist, ai_dist = draw_ui(focus_value, player, ai)
-        animate_smoke(smoke_particles)
+            # --- DRAW SECTION ---
+            draw_background()
+            player.draw()
+            ai.draw()
+            player_dist, ai_dist = draw_ui(focus_value, player, ai)
+            animate_smoke(smoke_particles)
 
-        # --- Check winner ---
-        if (player.finished or ai.finished) and winner is None:
-            winner = "player" if player.finished else "ai"
-            draw_winner(winner)
-            show_end_screen(winner)
+            # --- Check winner ---
+            if (player.finished or ai.finished) and winner is None:
+                winner = "player" if player.finished else "ai"
+                draw_winner(winner)
+                show_end_screen(winner)
+                running = False  # break inner loop to restart
 
-        pygame.display.flip()
+            pygame.display.flip()
 
 if __name__ == "__main__":
     main()
