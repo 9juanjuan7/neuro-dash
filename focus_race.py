@@ -146,11 +146,9 @@ def draw_ui(focus, player, ai):
     pygame.draw.rect(screen, color, (bar_x, bar_y, filled_w, bar_h), border_radius=6)
 
     # --- Label inside bar ---
-    label_text = font.render("Focus", True, WHITE)
+    label_text = font.render("Focus", True, BLACK)
     screen.blit(label_text, (bar_x + 8, bar_y - 1))  # slightly inside left side
-    value_text = font.render(f"{focus:.0f}%", True, WHITE)
-    value_rect = value_text.get_rect(right=bar_x + bar_w - 8, centery=bar_y + bar_h // 2)
-    screen.blit(value_text, value_rect)
+    # Percentage removed - just show the bar
 
     # --- Motivational message ABOVE the bar (with more spacing) ---
     total_path = max(FINISH_LINE - player.start_x - player.img.get_width(), 1)
@@ -363,6 +361,8 @@ def main():
         ai = Car(ai_img, 270)
         smoke_particles = []
         focus = 50
+        smoothed_focus = 50  # For smoothing the focus bar
+        smoothing_alpha = 0.15  # Lower = more smoothing (15% new, 85% old)
         winner = None
         running = True
 
@@ -379,13 +379,17 @@ def main():
 
             # --- Get focus from server via UDP socket ---
             # Default if no new data arrives
-            focus = 50  
+            raw_focus = 50  
 
             try:
                 data, _ = sock.recvfrom(1024)
-                focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
+                raw_focus = float(data.decode()) * 100  # server sends 0–1, map to 0–100
             except BlockingIOError:
                 pass  # no new data this frame
+
+            # Smooth the focus value to reduce jumpiness
+            smoothed_focus = smoothing_alpha * raw_focus + (1 - smoothing_alpha) * smoothed_focus
+            focus = smoothed_focus
 
             # --- Update car speeds ---
             player.speed = map_focus_to_speed(focus)

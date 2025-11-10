@@ -343,6 +343,7 @@ class EEGStreamer:
 # -------------------------------
 class BetaWaveProcessor:
     def __init__(self, sampling_rate: int = 250, beta_band: tuple = (13.0, 30.0), model_path="focus_eegnet_4ch.pth"):
+        # model_path parameter kept for compatibility but model is disabled
         self.sampling_rate = sampling_rate
         self.beta_band = beta_band
         self.buffer = deque(maxlen=sampling_rate)  # 1-second buffer
@@ -361,17 +362,34 @@ class BetaWaveProcessor:
         self.focus_scores = deque(maxlen=1000)
         self.timestamps = deque(maxlen=1000)
         
-        # Load model
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
-        try:
-            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-            self.model.eval()
-            print("✅ EEGNet focus model loaded")
-            self.model_loaded = True
-        except Exception as e:
-            print(f"❌ Failed to load model: {e}")
-            self.model_loaded = False
+        # Dynamic baseline for relative power calculation (DISABLED - using absolute power)
+        # self.baseline_beta_power = None
+        # self.baseline_samples = deque(maxlen=200)
+        # self.baseline_update_rate = 0.005
+        # self.baseline_initialized = False
+        
+        # Smoothing for focus scores (exponential moving average)
+        self.smoothed_focus = None
+        self.smoothing_alpha = 0.25  # 0.0 = no smoothing (instant), 1.0 = no change (fully smoothed)
+        # Lower alpha = more smoothing (less responsive), higher alpha = less smoothing (more responsive)
+        # 0.25 = 25% new value, 75% old value (more smoothing to prevent spikes)
+        
+        # Spike detection - track recent values to detect sudden jumps
+        self.recent_scores = deque(maxlen=10)  # Track last 10 scores
+        
+        # MODEL DISABLED - Using threshold method only
+        # # Load model
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.model = EEGNet4Ch(n_channels=4, n_timepoints=250).to(self.device)
+        # try:
+        #     self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        #     self.model.eval()
+        #     print("✅ EEGNet focus model loaded")
+        #     self.model_loaded = True
+        # except Exception as e:
+        #     print(f"❌ Failed to load model: {e}")
+        #     self.model_loaded = False
+        self.model_loaded = False  # Always use threshold method
 
     # Add EEG data to buffer
     def add_data(self, data: np.ndarray):
@@ -393,49 +411,120 @@ class BetaWaveProcessor:
             except:
                 continue
         beta_power = total_power / data.shape[0] if data.shape[0] > 0 else 0.0
+        
+        # Baseline tracking disabled - using absolute power approach for stability
+        # self.baseline_samples.append(beta_power)
+        # ... baseline update code removed ...
+        
         self.beta_history.append(beta_power)
         self.timestamps.append(time.time())
         return beta_power
 
-    # Predict focus score using the model
+    # Predict focus score using threshold method (model disabled)
     def get_focus_score(self, beta_power: float = None, threshold: float = None) -> float:
-        if not self.model_loaded:
-            # fallback to old threshold system
-            return self._threshold_focus(beta_power, threshold)
+        # MODEL DISABLED - Always use threshold method
+        # This is the original implementation before the model was added
+        return self._threshold_focus(beta_power, threshold)
         
-        if len(self.buffer) == 0:
-            return 0.0
-
-        data = np.array(list(self.buffer)).T  # n_channels x n_samples
-        # Ensure correct number of channels
-        if data.shape[0] != 4:
-            return 0.0
-        # Take last 250 samples (or less if buffer is smaller)
-        if data.shape[1] > 250:
-            data = data[:, -250:]
-        data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).to(self.device)  # 1 x channels x samples
-
-        with torch.no_grad():
-            pred = self.model(data_tensor)
-            score = pred.item()
-        
-        self.focus_scores.append(score)
-        return score
+        # MODEL CODE (COMMENTED OUT):
+        # if not self.model_loaded:
+        #     return self._threshold_focus(beta_power, threshold)
+        # 
+        # if len(self.buffer) == 0:
+        #     return 0.0
+        # 
+        # data = np.array(list(self.buffer)).T  # n_channels x n_samples
+        # if data.shape[0] != 4:
+        #     return 0.0
+        # if data.shape[1] > 250:
+        #     data = data[:, -250:]
+        # elif data.shape[1] < 250:
+        #     padding = np.zeros((4, 250 - data.shape[1]))
+        #     data = np.concatenate([padding, data], axis=1)
+        # 
+        # data_normalized = np.zeros_like(data)
+        # for ch in range(data.shape[0]):
+        #     channel_data = data[ch, :]
+        #     channel_mean = np.mean(channel_data)
+        #     channel_std = np.std(channel_data)
+        #     if channel_std > 1e-6:
+        #         data_normalized[ch, :] = (channel_data - channel_mean) / channel_std
+        #     else:
+        #         data_normalized[ch, :] = channel_data - channel_mean
+        # 
+        # data = data_normalized
+        # data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
+        # 
+        # try:
+        #     with torch.no_grad():
+        #         pred = self.model(data_tensor)
+        #         raw_score = pred.item()
+        #         score = max(0.0, min(1.0, raw_score))
+        # except Exception as e:
+        #     print(f"⚠️  Model inference error: {e}, falling back to threshold method")
+        #     return self._threshold_focus(beta_power, threshold)
+        # 
+        # self.focus_scores.append(score)
+        # return score
 
     # Old threshold-based fallback
     def _threshold_focus(self, beta_power: float, threshold: float) -> float:
         if threshold is None or threshold <= 0 or beta_power is None:
             return 0.0
-        max_power = threshold * 3.5
+        
+        # Use absolute power approach (more stable, no baseline drift issues)
+        max_power = threshold * 10.0  # Increased from 8.0 to 10.0 - much less sensitive
         raw_score = min(beta_power / max_power, 1.0)
-        score = raw_score ** 0.5
-        if score > 0.75:
-            excess = (score - 0.75) / 0.25
-            scaled_excess = excess ** 2
-            score = 0.75 + (scaled_excess * 0.25)
+        
+        # Apply a much steeper curve to make it less sensitive
+        # Lower exponent = steeper curve = harder to reach high focus
+        score = raw_score ** 0.4  # Changed from 0.5 to 0.4 - even less sensitive
+        
+        # Map the score to allow full range 0-100%, with clearer response to changes
+        # Make it easier to see the relationship between focusing and speed
+        if raw_score > 0.7:
+            # For high values, allow reaching 100% with a steeper curve
+            excess = (raw_score - 0.7) / 0.3  # Normalize 0.7-1.0 to 0-1
+            # Apply a steeper curve to make it harder to reach 100%
+            curved_excess = excess ** 1.5
+            score = 0.7 ** 0.4 + curved_excess * (1.0 - 0.7 ** 0.4)
+        else:
+            # For lower values, use the power curve
+            score = raw_score ** 0.4
+        
         score = max(0.0, min(1.0, score))
-        self.focus_scores.append(score)
-        return score
+        
+        # Spike detection - prevent sudden jumps
+        if len(self.recent_scores) > 0:
+            recent_avg = np.mean(list(self.recent_scores))
+            # If current score is more than 0.4 above recent average, it's likely a spike
+            if score > recent_avg + 0.4:
+                # Cap the increase to prevent spikes
+                score = recent_avg + 0.2  # Limit increase to 0.2 per step
+                score = min(score, 1.0)
+        
+        self.recent_scores.append(score)
+        
+        # Apply exponential moving average smoothing to reduce noise and spikes
+        if self.smoothed_focus is None:
+            self.smoothed_focus = score
+        else:
+            # Exponential moving average: new = alpha * current + (1 - alpha) * previous
+            # Lower alpha = more smoothing (less responsive, prevents spikes)
+            self.smoothed_focus = self.smoothing_alpha * score + (1 - self.smoothing_alpha) * self.smoothed_focus
+        
+        # Use smoothed value
+        smoothed_score = self.smoothed_focus
+        
+        # Debug: Print occasionally to verify EEG data is being processed
+        if not hasattr(self, '_last_threshold_debug_time'):
+            self._last_threshold_debug_time = time.time()
+        if time.time() - self._last_threshold_debug_time > 5.0:
+            print(f"[Threshold] Beta power: {beta_power:.2f}, Threshold: {threshold:.2f}, Max power: {max_power:.2f}, Raw score: {raw_score:.3f}, Before smooth: {score:.3f}, Final: {smoothed_score:.3f}")
+            self._last_threshold_debug_time = time.time()
+        
+        self.focus_scores.append(smoothed_score)
+        return smoothed_score
 
     def get_history(self):
         if len(self.timestamps) == 0:
